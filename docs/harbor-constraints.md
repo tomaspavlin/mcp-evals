@@ -28,12 +28,15 @@ The real blocker for this use case is **MCP auth**, not multi-container.
 
 ## MCP auth - the blocker for remote prod MCPs
 
-- `MCPServerConfig` schema is `name | transport | url | command | args` - **no `headers` field**. Source: `harbor/models/task/config.py`.
+- `MCPServerConfig` schema is `name | transport | url | command | args` - **no `headers` field, no `env` field**. Source: `src/harbor/models/task/config.py` (verified June 2026).
+- Stronger: Harbor **explicitly drops** unsupported fields with a debug log in `src/harbor/cli/utils.py::load_mcp_servers`. A unit test asserts `{"headers": {"Authorization": "Bearer x"}}` is dropped. This is deliberate. PR #1675 (May 2026) reaffirmed the decision.
+- No open issue or PR upstream is requesting headers/auth. No cookbook recipe uses a remote-authed MCP - all `streamable-http` examples point at local FastMCP sidecars.
 - Remote MCPs that require `Authorization: Bearer <TOKEN>` (Apify, hosted Linear/Notion, GitHub Copilot MCP) **cannot be authed declaratively in `task.toml` today**.
-- Three workarounds, in order of effort:
-  1. **Stdio equivalent + env var.** Most vendor MCPs ship a `npx -y …` / `uvx …` package alongside their hosted HTTP endpoint. The stdio version takes the token via env var. Often functionally identical to the remote (same backend). Single-container, cloud-compatible. *Caveat:* you're not testing the literal hosted endpoint.
+- Workarounds, in order of effort:
+  1. **Stdio equivalent + `[environment.env]` passthrough.** Most vendor MCPs ship a `npx -y …` / `uvx …` package. `MCPServerConfig` has no `env` field, BUT `[environment.env]` in `task.toml` forwards host env vars into the agent's container at runtime (`${VAR}` template, resolved from `os.environ`). Stdio MCP subprocesses inherit env from the agent process, so this is the supported channel. Token never enters the image. Works on docker / daytona / e2b uniformly. *Caveat:* you're not testing the literal hosted endpoint.
   2. **Runtime registration in the agent.** Have a setup step write the agent's native MCP config (e.g. `~/.claude.json`) directly with headers. Bypasses Harbor's MCP config. Hackier but works for any agent.
-  3. **Patch Harbor.** Add `headers: dict[str, str]` to `MCPServerConfig` and update each agent's MCP serialization. ~50 LoC + tests. Worth upstreaming.
+  3. **Local proxy sidecar.** Run a stdio→http proxy (`mcp-remote` / `mcp-proxy`) inside the container, holding the token, forwarding to the remote MCP. task.toml points `url` at `http://localhost:…`.
+  4. **Patch Harbor.** Add `headers: dict[str, str]` to `MCPServerConfig` and update each agent's MCP serialization. ~50 LoC + tests. Worth upstreaming - no upstream interest yet, so we'd lead.
 
 ## Multi-container & cloud (only matters if/when we add mock MCPs later)
 
