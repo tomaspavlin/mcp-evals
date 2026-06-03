@@ -47,6 +47,13 @@ harbor run -t hello-world/hello-world -a claude-code -m anthropic/claude-haiku-4
 harbor run -c configs/swebench-haiku-smoketest.yaml -m anthropic/claude-sonnet-4.6 --job-name swebench-sonnet-smoketest
 ```
 
+## Running a config
+
+```bash
+set -a; source .env; set +a
+harbor run -c configs/apify-all-haiku-smoketest.yaml
+```
+
 ## Viewing results
 
 ```bash

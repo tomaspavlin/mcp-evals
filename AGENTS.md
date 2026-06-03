@@ -34,6 +34,8 @@ Start with **read-only tool calls** for simplicity. Test production / staging re
 
 Job configs live in `configs/*.yaml` (Harbor `JobConfig` schema). Run with `harbor run -c configs/<name>.yaml`. CLI flags override fields. Naming: `<dataset>-<model>-<purpose>.yaml`. Keep secrets in `.env`, never in yaml.
 
+`harbor run` has no `--env-file` flag. Export vars in the shell first (`set -a; source .env; set +a`) before invoking it.
+
 ## Project docs
 
 Read these before proposing architecture:

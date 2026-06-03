@@ -61,6 +61,12 @@ Model slugs on OpenRouter use **dots, not hyphens**: `anthropic/claude-haiku-4.5
   - **Fix paths:** (1) Email support@daytona.io / PR the sandbox-network-whitelist repo for `*.apify.com` etc. (2) Tier 3 = full internet by default. (3) Tier 3's `networkAllowList` is CIDR-only (max 10 IPv4), useless for Cloudflare-fronted hosts.
 - **All cloud providers ship as optional install extras** - `pipx inject harbor e2b` / `daytona` / `modal` etc. Without the matching extra, `--env <provider>` errors at runtime.
 
+## `harbor run` operational gotchas
+
+- **No `--env-file` flag.** `harbor run` does not load `.env`. Required vars must be present in the process environment. Export with `set -a; source .env; set +a` (or use direnv) before invoking.
+- **Interactive env-var confirmation.** Any task with `[environment.env]` triggers `Tasks in this run will load these from your environment. Proceed? (Y/n)` even when all vars are set. Blocks unattended runs unless stdin is fed (`yes | harbor run ...`).
+- **Job lock collision on re-run.** Re-running with the same `job_name` after the config changed errors with `FileExistsError: Job directory jobs/<name> already has a lock.json that does not match the resolved job lock` (`harbor/job.py:584`). This is the replay-safety check. Workaround: `--job-name <fresh>` or remove the prior `jobs/<name>/` dir.
+
 ## Closest existing template
 
 - **`harbor-cookbook/harbor_cookbook/recipes/mcp-tools/`** - the canonical MCP-using task template. See [`./harbor-task-example.md`](./harbor-task-example.md) for the annotated walkthrough.
