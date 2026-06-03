@@ -72,7 +72,7 @@ The `sed` is not cosmetic. `mcp-remote` logs the raw `Authorization` header to s
 set -e
 curl -LsSf https://astral.sh/uv/0.9.7/install.sh | sh
 source $HOME/.local/bin/env
-uvx --with harbor-rewardkit@0.1 rewardkit /tests
+uvx --from harbor-rewardkit==0.1.4 rewardkit /tests
 ```
 
 Built-in helper (substring/existence check, permissive):
