@@ -42,3 +42,15 @@ Real LLM via OpenRouter (cents):
 ```bash
 harbor run -t hello-world/hello-world -a claude-code -m anthropic/claude-haiku-4.5 --env daytona
 ```
+
+```bash
+harbor run -c configs/swebench-haiku-smoketest.yaml -m anthropic/claude-sonnet-4.6 --job-name swebench-sonnet-smoketest
+```
+
+## Viewing results
+
+```bash
+harbor view jobs/
+```
+
+or `harbor view jobs/<job-name>/`

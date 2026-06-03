@@ -30,6 +30,10 @@ Start with **read-only tool calls** for simplicity. Test production / staging re
 - Agent execution traces (for debugging)
 - Anything else useful as we go
 
+## Configs
+
+Job configs live in `configs/*.yaml` (Harbor `JobConfig` schema). Run with `harbor run -c configs/<name>.yaml`. CLI flags override fields. Naming: `<dataset>-<model>-<purpose>.yaml`. Keep secrets in `.env`, never in yaml.
+
 ## Project docs
 
 Read these before proposing architecture:
