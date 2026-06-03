@@ -1,0 +1,17 @@
+job_name: apify-mcp-connected-haiku-smoketest
+n_concurrent_trials: 1
+
+tasks:
+  - path: tasks/apify-mcp-connected
+
+agents:
+  - name: claude-code
+    model_name: anthropic/claude-haiku-4.5
+    kwargs:
+      max_budget_usd: 1.50
+      max_turns: 20
+
+environment:
+  # docker (local) until Apify hosts are added to Daytona's outbound allowlist.
+  # See docs/harbor-constraints.md "Daytona outbound network is allowlisted by tier".
+  type: docker
