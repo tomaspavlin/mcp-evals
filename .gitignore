@@ -1,0 +1,39 @@
+# Local reference clones (Harbor, tbench, etc.)
+_refs/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.uv/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# Node / TS
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+.npm/
+.pnpm-store/
+
+# Harbor / eval outputs
+runs/
+results/
+traces/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

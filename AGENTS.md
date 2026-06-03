@@ -26,3 +26,9 @@ We want to evaluate:
 - we ideally also want to output some trace for debugging
 
 If possible, use existing logic of Harbor instead of implementing your own.
+
+## Project docs
+See `docs/` for research notes — read these before proposing architecture:
+- `docs/harbor-overview.md` — what Harbor is, core abstractions, install
+- `docs/harbor-task-example.md` — annotated walkthrough of the `mcp-tools` cookbook recipe (closest template)
+- `docs/harbor-constraints.md` — discovered facts that constrain design (Python-only, no MCP auth headers, multi-container is local-only)
