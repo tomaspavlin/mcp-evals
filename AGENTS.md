@@ -32,7 +32,7 @@ Start with **read-only tool calls** for simplicity. Test production / staging re
 
 ## Configs
 
-Job configs live in `configs/*.yaml` (Harbor `JobConfig` schema). Run with `harbor run -c configs/<name>.yaml`. CLI flags override fields. Naming: `<dataset>-<model>-<purpose>.yaml`. Keep secrets in `.env`, never in yaml.
+Job configs live in `configs/*.yaml` (Harbor `JobConfig` schema). Run with `harbor run -c configs/<name>.yaml`. CLI flags override fields. Naming: `<dataset>-<harness>-<model>-<purpose>.yaml` (e.g. `apify-fetch-actor-id-opencode-grok-eval.yaml`). `<purpose>` is `eval` for new configs; legacy `-smoketest` configs predate this. Keep secrets in `.env`, never in yaml.
 
 `harbor run` has no `--env-file` flag. Export vars in the shell first (`set -a; source .env; set +a`) before invoking it.
 

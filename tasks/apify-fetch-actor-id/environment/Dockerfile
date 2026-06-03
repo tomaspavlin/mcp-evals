@@ -1,4 +1,4 @@
-FROM node:20-bookworm
+FROM node:22-bookworm
 
 RUN npm install -g mcp-remote@0.1.38
 
