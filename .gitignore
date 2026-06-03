@@ -39,3 +39,4 @@ Thumbs.db
 *.swp
 
 jobs/
+*.local.md
