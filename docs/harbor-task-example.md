@@ -6,7 +6,7 @@ This is the closest existing example to what we want to build. Source: [`harbor-
 
 The agent is told an MCP server is running at `http://mcp-server:8000/mcp` exposing two tools. The agent must connect, call both tools, and write the returned values to two files. A pytest verifier checks the file contents.
 
-This pattern — declarative MCP config + sidecar container + pytest verifier reading filesystem state — is **exactly** the shape of our eval tasks.
+This pattern - declarative MCP config + sidecar container + pytest verifier reading filesystem state - is **exactly** the shape of our eval tasks.
 
 ## Directory layout
 
@@ -28,7 +28,7 @@ mcp-tools/
     └── solve.sh                    # reference solution (for `oracle` agent)
 ```
 
-## `task.toml` — the declarative core
+## `task.toml` - the declarative core
 
 ```toml
 version = "1.0"
@@ -60,8 +60,8 @@ Supported transports: `"sse"`, `"streamable-http"` (alias: `"http"`), `"stdio"`.
 ```markdown
 There is an MCP server running at `http://mcp-server:8000/mcp` that exposes two tools:
 
-- `get_secret` — returns a secret value
-- `get_timestamp` — returns the server's startup timestamp
+- `get_secret` - returns a secret value
+- `get_timestamp` - returns the server's startup timestamp
 
 Your task:
 
@@ -75,7 +75,7 @@ Write each value exactly as returned by the tool, with no additional formatting.
 
 Pure natural language. No special syntax. This is what the agent sees.
 
-## `environment/docker-compose.yaml` — sidecar pattern
+## `environment/docker-compose.yaml` - sidecar pattern
 
 ```yaml
 # Merged on top of Harbor's base compose config.
@@ -104,7 +104,7 @@ Key idea: **`main` is the agent's container, autoconfigured by Harbor.** You add
 
 **Limitation:** Docker Compose tasks only work with `--env docker` (local). Cloud providers (Modal, E2B, ...) currently only support single-Dockerfile environments.
 
-## `environment/mcp-server/server.py` — the sidecar MCP
+## `environment/mcp-server/server.py` - the sidecar MCP
 
 ```python
 # /// script
@@ -132,9 +132,9 @@ if __name__ == "__main__":
 
 This is a stand-in for the real MCP. **For our project we have two options:**
 1. Run the **real** remote MCP as a sidecar (if it's self-hostable / has a Docker image, e.g. for Apify or GitHub MCP).
-2. Run a **mock** MCP sidecar with deterministic data — better for reproducibility (no rate limits, no live data drift) but worse for ecological validity.
+2. Run a **mock** MCP sidecar with deterministic data - better for reproducibility (no rate limits, no live data drift) but worse for ecological validity.
 
-## `tests/test.sh` — verifier entrypoint
+## `tests/test.sh` - verifier entrypoint
 
 ```bash
 #!/bin/bash
@@ -198,14 +198,14 @@ harbor run -p harbor_cookbook/recipes/mcp-tools -a codex      -m openai/gpt-5
 harbor run -p harbor_cookbook/recipes/mcp-tools -a opencode   -m anthropic/claude-sonnet-4-6
 ```
 
-## Verdict — this is our template
+## Verdict - this is our template
 
 For each MCP/CLI/skill alternative we want to eval, we make a task directory with:
 
-- `task.toml` — declares which MCP (if any) is available to the agent
-- `instruction.md` — the user-facing prompt (same across MCP/CLI/skill variants)
-- `environment/Dockerfile` (+ `docker-compose.yaml` if MCP sidecar) — sets up the world
-- `tests/test.sh` + `test_outputs.py` — checks success
-- `solution/solve.sh` — optional reference for oracle sanity check
+- `task.toml` - declares which MCP (if any) is available to the agent
+- `instruction.md` - the user-facing prompt (same across MCP/CLI/skill variants)
+- `environment/Dockerfile` (+ `docker-compose.yaml` if MCP sidecar) - sets up the world
+- `tests/test.sh` + `test_outputs.py` - checks success
+- `solution/solve.sh` - optional reference for oracle sanity check
 
-To compare an MCP vs CLI vs skill alternative for the same task, we'd make three sibling tasks with the same instruction + tests but different `environment/` setups (one with MCP sidecar, one with CLI tool installed, one with a skill mounted). Or one task with three variants chosen via config — Harbor's [sweeps](https://www.harborframework.com/docs) (`harbor sweeps`) may be the right primitive here, worth investigating once we have a single task working.
+To compare an MCP vs CLI vs skill alternative for the same task, we'd make three sibling tasks with the same instruction + tests but different `environment/` setups (one with MCP sidecar, one with CLI tool installed, one with a skill mounted). Or one task with three variants chosen via config - Harbor's [sweeps](https://www.harborframework.com/docs) (`harbor sweeps`) may be the right primitive here, worth investigating once we have a single task working.

@@ -12,14 +12,25 @@ Harbor is "a framework for evaluating and optimizing agents and models in contai
 
 ## Language and distribution
 
-**Harbor is Python (3.12+) and distributed on PyPI.** There is no JS/TS port and no language-agnostic API for *driving* the harness — the CLI and the eval engine are Python. (Implications for our project: see `architecture-decisions.md`.)
+**Harbor is Python (3.12+) and distributed on PyPI.** There is no JS/TS port and no language-agnostic API for *driving* the harness - the CLI and the eval engine are Python. (Implications for our project: see `architecture-decisions.md`.)
 
 Install:
 ```bash
 uv tool install harbor   # preferred
 # or
-pip install harbor
+pipx install harbor
+# or
+pip install harbor       # only inside a venv on macOS
 ```
+
+**Cloud sandbox providers are optional extras** - install only the ones you need:
+```bash
+pip install 'harbor[e2b]'         # E2B
+pip install 'harbor[daytona]'     # Daytona
+pip install 'harbor[modal]'       # Modal
+# pipx equivalent: pipx inject harbor e2b   (or daytona/modal)
+```
+Without the matching extra, `--env e2b` (or daytona/modal) errors at runtime. Local Docker needs no extra.
 
 Stack notes:
 - Typer-based CLI (`harbor` binary)
@@ -29,7 +40,7 @@ Stack notes:
 - Docker (local) by default, plus cloud sandbox providers: Daytona, E2B, Modal, Runloop, Apple Container, GKE, Novita
 - Docs site is Next.js/Fumadocs (TS), but that's only the marketing/docs site, not the runtime
 
-tbench/Terminal-Bench is itself a Python package (`tb` CLI) and uses Harbor as the harness — they're sibling repos in the same org. Terminal-Bench is *consumed by* Harbor as a dataset (`harbor run --dataset terminal-bench@2.0 ...`), it doesn't replace it.
+tbench/Terminal-Bench is itself a Python package (`tb` CLI) and uses Harbor as the harness - they're sibling repos in the same org. Terminal-Bench is *consumed by* Harbor as a dataset (`harbor run --dataset terminal-bench@2.0 ...`), it doesn't replace it.
 
 ## Core abstractions
 
@@ -39,7 +50,7 @@ Source of truth: [Harbor docs > Task Structure](https://www.harborframework.com/
 |---|---|---|
 | **Task** | A directory with `task.toml`, `instruction.md`, `environment/`, `tests/`, optional `solution/`. The unit of eval. Declarative config + scripts. | `src/harbor/models/task/`, examples in `examples/tasks/` |
 | **Agent** | A class extending `BaseAgent` that knows how to set up and run a CLI agent (claude-code, codex, opencode, openhands, aider, goose, ...) inside an environment. Implements `setup()` + `run(instruction, environment, context)`. | `src/harbor/agents/installed/*.py` |
-| **Environment** | Container runtime — `BaseEnvironment` impls for `docker` (local, supports Docker Compose), `daytona`, `e2b`, `modal`, `runloop`, `gke`, `apple_container`, `novita`. Single-Dockerfile vs Compose support varies by provider. | `src/harbor/environments/` |
+| **Environment** | Container runtime - `BaseEnvironment` impls for `docker` (local, supports Docker Compose), `daytona`, `e2b`, `modal`, `runloop`, `gke`, `apple_container`, `novita`. Single-Dockerfile vs Compose support varies by provider. | `src/harbor/environments/` |
 | **Verifier** | The `tests/test.sh` script that runs inside the container and writes a reward to `/logs/verifier/reward.txt` (single float) or `reward.json` (multi-metric). Free-form: pytest, shell asserts, LLM-judge, whatever. Can run "shared" with the agent container or "separate" in a locked-down grading image. | `src/harbor/verifier/`, `tests/test.sh` in each task |
 | **Trial** | One execution: a (task, agent, model) tuple. | `src/harbor/models/trial/` |
 | **Job** | A collection of trials, e.g. N agents × M tasks × K attempts. Run in parallel via `--n-concurrent`. | `src/harbor/models/job/`, `examples/configs/*.yaml` |
@@ -61,13 +72,13 @@ async def run_trial():
 
 ## Harness / LLM integration
 
-Each "agent" in Harbor wraps a real CLI agent — Harbor installs it into the container, configures it (API keys, MCP servers, skills), feeds it the instruction, and waits.
+Each "agent" in Harbor wraps a real CLI agent - Harbor installs it into the container, configures it (API keys, MCP servers, skills), feeds it the instruction, and waits.
 
 Built-in installed agents (relevant to us):
 
-- `claude-code` — Anthropic Claude Code CLI
-- `codex` — OpenAI Codex CLI
-- `opencode` — open-source coding agent
+- `claude-code` - Anthropic Claude Code CLI
+- `codex` - OpenAI Codex CLI
+- `opencode` - open-source coding agent
 - Plus: `copilot-cli`, `openhands`, `openhands-sdk`, `aider`, `goose`, `gemini-cli`, `hermes`, `qwen-coder`, `cursor-cli`, `cline-cli`, `mini-swe-agent`, `swe-agent`, `kimi-cli`, `rovodev-cli`, `trae-agent`, `antigravity-cli`
 - Plus internal: `terminus-1`, `terminus-2`, `oracle` (runs `solution/solve.sh`, useful for sanity-checking a task), `nop`
 
@@ -75,7 +86,7 @@ LLM models are passed as LiteLLM-style strings: `anthropic/claude-opus-4-1`, `op
 
 All three of our target harnesses (claude-code, codex, opencode) are first-class. **We do not need to write harness adapters.**
 
-## MCP support — built in, but with a caveat
+## MCP support - built in, but with a caveat
 
 Harbor has **declarative, agent-agnostic MCP config**. In `task.toml`:
 
@@ -89,25 +100,25 @@ url = "http://mcp-server:8000/mcp"
 # args = ["-y", "some-mcp-server"]
 ```
 
-Compatible agents auto-register these. Confirmed via `grep mcp_servers src/harbor/agents/installed/`: claude-code, codex, opencode, copilot-cli, cursor-cli, gemini-cli, goose, hermes, kimi-cli, qwen-coder, openhands, openhands-sdk, mini-swe-agent, antigravity-cli, openclaw — i.e. all the ones that matter.
+Compatible agents auto-register these. Confirmed via `grep mcp_servers src/harbor/agents/installed/`: claude-code, codex, opencode, copilot-cli, cursor-cli, gemini-cli, goose, hermes, kimi-cli, qwen-coder, openhands, openhands-sdk, mini-swe-agent, antigravity-cli, openclaw - i.e. all the ones that matter.
 
 Each agent translates the config to its native format. E.g. claude-code writes `~/.claude.json` with `{"mcpServers": {...}}` (see [`src/harbor/agents/installed/claude_code.py:1187`](https://github.com/harbor-framework/harbor/blob/main/src/harbor/agents/installed/claude_code.py)).
 
-**Caveat — no auth headers in the config schema.** `MCPServerConfig` ([`src/harbor/models/task/config.py:485`](https://github.com/harbor-framework/harbor/blob/main/src/harbor/models/task/config.py)) has only `name`, `transport`, `url`, `command`, `args`. There is **no `headers` field**, so a Bearer token for a remote MCP (like `https://mcp.apify.com/`, GitHub MCP, Linear MCP, Notion MCP) cannot be passed through this declarative config today. Options to work around:
+**Caveat - no auth headers in the config schema.** `MCPServerConfig` ([`src/harbor/models/task/config.py:485`](https://github.com/harbor-framework/harbor/blob/main/src/harbor/models/task/config.py)) has only `name`, `transport`, `url`, `command`, `args`. There is **no `headers` field**, so a Bearer token for a remote MCP (like `https://mcp.apify.com/`, GitHub MCP, Linear MCP, Notion MCP) cannot be passed through this declarative config today. Options to work around:
 
 1. Run the MCP server **as a sidecar container** inside the task (the pattern shown in the cookbook). Auth is then internal to the container, and we control the env. Works for Apify if there's a self-hostable image, or for proxies. (This is what `recipes/mcp-tools` does, but with a local FastMCP server, not a remote one.)
 2. Use `stdio` transport with a wrapper like `npx -y @modelcontextprotocol/server-github` and inject the token via `environment.env`. Many remote MCPs have stdio equivalents.
-3. Have the agent itself register the MCP at runtime via its own config (e.g. write `~/.claude.json` in `solution.env` or as a setup step) — bypasses Harbor's MCP config entirely.
+3. Have the agent itself register the MCP at runtime via its own config (e.g. write `~/.claude.json` in `solution.env` or as a setup step) - bypasses Harbor's MCP config entirely.
 4. PR a `headers: dict[str, str]` field to `MCPServerConfig` upstream. Small change.
 
 ## Tracing, traces, metrics
 
 - **Reward** is the primary signal. `reward.txt` for single float (0/1), `reward.json` for multi-metric. Harbor reads `reward.json` first, falls back to `.txt`.
 - **Trajectories** in ATIF format are emitted by agents that opt in (`SUPPORTS_ATIF = True` on the agent class).
-- **Logs** — `/logs/agent/` and `/logs/verifier/` are downloaded from each container to the host after the run.
-- **Custom metrics** — see `examples/metrics/` and `packages/rewardkit/`. LLM-judge example at `examples/tasks/llm-judge-example/`.
-- **Token / cost accounting** — handled via LiteLLM (which tracks per-call usage); how it surfaces in the trial summary is worth confirming in `src/harbor/metrics/` when we get there. The docs page on tracing is at https://www.harborframework.com/docs (see "Core Concepts").
-- **Viewer UI** — `apps/viewer/` is a React Router + Vite app for browsing trial results. There's also `harbor view` and `harbor analyze` CLI commands.
+- **Logs** - `/logs/agent/` and `/logs/verifier/` are downloaded from each container to the host after the run.
+- **Custom metrics** - see `examples/metrics/` and `packages/rewardkit/`. LLM-judge example at `examples/tasks/llm-judge-example/`.
+- **Token / cost accounting** - handled via LiteLLM (which tracks per-call usage); how it surfaces in the trial summary is worth confirming in `src/harbor/metrics/` when we get there. The docs page on tracing is at https://www.harborframework.com/docs (see "Core Concepts").
+- **Viewer UI** - `apps/viewer/` is a React Router + Vite app for browsing trial results. There's also `harbor view` and `harbor analyze` CLI commands.
 
 ## Useful CLI commands
 

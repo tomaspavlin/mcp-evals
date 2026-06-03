@@ -1,34 +1,46 @@
-The goal of this project is to evaluate MCP servers.
+# mcp-evals
 
-The project will be used for:
-- MCP servers development
-- evaluating existing MCP servers vs their CLI, API or skills alternatives.
+## Goal
 
-We want to do the evaluations on different LLMs and agent harnesses. We want to start with:
-- claude code, codex, opencode
+Evaluate MCP servers. The project serves two purposes:
 
-It will be built on Harbor framework:
-- Harbor docs: https://www.harborframework.com/docs
-- Harbor gh: https://github.com/harbor-framework/harbor
-- they are creators of https://www.tbench.ai/ - it is built on harbor too
+1. **MCP server development** - build new MCP servers and evaluate them.
+2. **Compare existing MCP servers vs their CLI / API / skill alternatives** - measure whether MCP wrapping actually helps an agent vs giving it the underlying tool directly.
 
-We will define test-cases for mcps as:
-- apify: https://mcp.apify.com/
-- github
-- linear
-- notion
-We want to start with read-only tools calls for simplicity first.
+Evaluations run across different LLMs and agent harnesses. Starting with: **claude-code, codex, opencode**.
 
-We want to evaluate:
-- task success rate
-- token / cost efficiency
-- anything else that can be useful
-- we ideally also want to output some trace for debugging
+## Framework
 
-If possible, use existing logic of Harbor instead of implementing your own.
+Built on **Harbor** ([docs](https://www.harborframework.com/docs), [gh](https://github.com/harbor-framework/harbor)), the same framework behind [tbench.ai](https://www.tbench.ai/). **Reuse Harbor primitives - do not reimplement.** If you find yourself writing infrastructure that looks like task definition, sandboxing, agent install, verifier, or trial orchestration, stop and find the Harbor abstraction first.
+
+## Targets
+
+MCP servers to evaluate:
+- Apify - https://mcp.apify.com/
+- GitHub
+- Linear
+- Notion
+
+Start with **read-only tool calls** for simplicity. Test production / staging remote MCPs directly - no need to run them locally.
+
+## Metrics
+
+- Task success rate
+- Token / cost efficiency
+- Agent execution traces (for debugging)
+- Anything else useful as we go
 
 ## Project docs
-See `docs/` for research notes — read these before proposing architecture:
-- `docs/harbor-overview.md` — what Harbor is, core abstractions, install
-- `docs/harbor-task-example.md` — annotated walkthrough of the `mcp-tools` cookbook recipe (closest template)
-- `docs/harbor-constraints.md` — discovered facts that constrain design (Python-only, no MCP auth headers, multi-container is local-only)
+
+Read these before proposing architecture:
+
+- `docs/harbor-overview.md` - what Harbor is, install, core abstractions
+- `docs/harbor-task-example.md` - annotated walkthrough of `harbor-cookbook/recipes/mcp-tools/` (the template we fork)
+- `docs/harbor-constraints.md` - discovered facts that constrain design (Python-only runtime, MCP auth header gap, OpenRouter BASE_URL gotcha, cloud sandbox traps)
+
+Developer setup (installs, env vars, smoke tests) lives in `README.md`.
+
+## Writing style (applies to all output: docs, code comments, commit messages, chat)
+
+- Be informative, brief, information-dense. No filler, no hedging, no restating the request. One useful line beats three padded ones.
+- Do not use em-dashes. Use a regular hyphen, comma, colon, or split the sentence instead.
