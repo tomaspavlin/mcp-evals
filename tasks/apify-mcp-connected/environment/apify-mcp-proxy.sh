@@ -1,8 +1,7 @@
 #!/bin/bash
-# stdio MCP wrapper: proxies to the remote Apify MCP, injecting auth from $APIFY_TOKEN.
-# APIFY_TOKEN is forwarded into the container via [environment.env] in task.toml.
-# stderr is piped through sed to redact the token, because mcp-remote logs the raw
-# Authorization header on startup and that stream is captured by the agent's logger.
+# Stdio shim for https://mcp.apify.com/. Harbor's MCPServerConfig has no
+# `headers` field, so we can't declare an auth'd remote MCP directly - we
+# declare stdio + this wrapper instead.
 set -eu
 : "${APIFY_TOKEN:?APIFY_TOKEN env var is required}"
 mcp-remote https://mcp.apify.com/ --header "Authorization: Bearer $APIFY_TOKEN" \

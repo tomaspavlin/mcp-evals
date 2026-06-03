@@ -41,6 +41,7 @@ Read these before proposing architecture:
 - `docs/harbor-overview.md` - what Harbor is, install, core abstractions
 - `docs/harbor-task-example.md` - annotated walkthrough of `harbor-cookbook/recipes/mcp-tools/` (the template we fork)
 - `docs/harbor-constraints.md` - discovered facts that constrain design (Python-only runtime, MCP auth header gap, OpenRouter BASE_URL gotcha, cloud sandbox traps)
+- `docs/mcp-task-pattern.md` - how we wire an auth'd remote MCP into a Harbor task (stdio wrapper around `mcp-remote`, token via `[environment.env]`, docker-only for now). Fork-this template.
 
 Developer setup (installs, env vars, smoke tests) lives in `README.md`.
 
