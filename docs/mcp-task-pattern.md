@@ -22,7 +22,7 @@ tasks/<name>/
     Dockerfile               # node:20-bookworm + `npm install -g mcp-remote`
     apify-mcp-proxy.sh       # the wrapper (see template below)
   tests/
-    test.sh, test_outputs.py
+    test.sh, check.py          # Reward Kit verifier (see below)
   solution/solve.sh
 ```
 
@@ -61,6 +61,37 @@ The `sed` is not cosmetic. `mcp-remote` logs the raw `Authorization` header to s
 ## Verifier design rule
 
 **The expected answer must require an actual MCP tool call**, not a name the agent can guess from the prompt. We tried a "list connected MCP names → /app/mcps.txt" task and the agent passed by writing `apify\n` from the init message alone, with `connected: []`. Use a stable opaque value the API returns (e.g., `moJRLRc85AitArpNN` for `apify/web-scraper`).
+
+## Verifier pattern (Reward Kit)
+
+`tests/test.sh` is a one-liner that runs [Reward Kit](https://www.harborframework.com/docs/rewardkit); it discovers criteria in `/tests/`, evaluates them against the workspace at `/app`, and writes `/logs/verifier/reward.json`. No pytest, no manual reward file.
+
+```bash
+# tests/test.sh
+#!/bin/bash
+set -e
+curl -LsSf https://astral.sh/uv/0.9.7/install.sh | sh
+source $HOME/.local/bin/env
+uvx --with harbor-rewardkit@0.1 rewardkit /tests
+```
+
+Built-in helper (substring/existence check, permissive):
+```python
+# tests/check.py
+import rewardkit as rk
+rk.file_contains("mcps.txt", "apify")
+```
+
+Custom criterion (exact match, strict — use when a built-in would be too permissive):
+```python
+# tests/check.py
+from pathlib import Path
+from rewardkit import criterion
+
+@criterion
+def actor_id_matches(workspace: Path) -> bool:
+    return (workspace / "actor_id.txt").read_text().strip() == "moJRLRc85AitArpNN"
+```
 
 ## Adapt for another vendor
 
