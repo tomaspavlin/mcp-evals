@@ -4,6 +4,9 @@ n_concurrent_trials: 1
 tasks:
   - path: tasks/apify-fetch-actor-id
 
+extra_instruction_paths:
+  - instructions/apify-skill.md
+
 agents:
   - name: opencode
     model_name: openrouter/deepseek/deepseek-chat-v3.1

@@ -17,7 +17,7 @@ Harbor's `MCPServerConfig` accepts `name | transport | url | command | args`. **
 ```
 tasks/<name>/
   task.toml                  # env passthrough only; no MCP block
-  instruction.md             # tool-agnostic wording (works for MCP or skill)
+  instruction.md             # task only - no mention of tool variant
   environment/
     Dockerfile               # node:20-bookworm + `npm install -g mcp-remote`
     apify-mcp-proxy.sh       # the wrapper (see template below)
@@ -27,6 +27,10 @@ tasks/<name>/
 
 skills/<name>/
   SKILL.md                   # Anthropic skill format: frontmatter + body
+
+instructions/
+  <vendor>-mcp.md            # snippet appended via extra_instruction_paths
+  <vendor>-skill.md          # snippet appended via extra_instruction_paths
 
 configs/
   <task>-<harness>-<model>-mcp-eval.yaml      # job: this task + MCP
@@ -44,9 +48,14 @@ APIFY_TOKEN = "${APIFY_TOKEN}"        # required; errors if unset on host
 
 ## Job config: pick the tool variant
 
+The job yaml decides MCP vs skill and points `extra_instruction_paths` at the matching snippet so the agent gets told which tool to use. `instruction.md` itself stays tool-agnostic.
+
 MCP variant:
 
 ```yaml
+extra_instruction_paths:
+  - instructions/apify-mcp.md
+
 agents:
   - name: opencode
     model_name: openrouter/deepseek/deepseek-chat-v3.1
@@ -60,12 +69,17 @@ agents:
 Skill variant (Harbor uploads the host dir into `/harbor/skills/<name>/` at trial start, then copies into each harness's skill dir: `~/.claude/skills/`, `~/.config/opencode/skills/`, `$HOME/.agents/skills/` for claude-code, opencode, codex respectively):
 
 ```yaml
+extra_instruction_paths:
+  - instructions/apify-skill.md
+
 agents:
   - name: opencode
     model_name: openrouter/deepseek/deepseek-chat-v3.1
     skills:
       - skills/apify-api          # host path, relative to repo root
 ```
+
+`extra_instruction_paths` is a job-level field. Each file's contents get appended to the task's `instruction.md` with `\n\n` separators (`src/harbor/models/task/task.py:181`).
 
 Harbor merges `task.config.environment.mcp_servers` with `agent.mcp_servers` by name (last wins). There's no way to disable a task-level MCP from the yaml, which is why the task no longer declares one. See `src/harbor/trial/trial.py:641`.
 
@@ -129,8 +143,9 @@ def actor_id_matches(workspace: Path) -> bool:
 2. In `environment/<vendor>-mcp-proxy.sh`: change the URL, the env var name, and the redaction regex.
 3. In `task.toml`: swap the env var (no MCP block).
 4. In `.env.example` + `.env`: add the new token.
-5. Rewrite `instruction.md` (keep it tool-agnostic) and `tests/check.py` for the new vendor.
-6. Add a job config under `configs/` declaring `mcp_servers:` and/or `skills:` for the new vendor.
+5. Rewrite `instruction.md` (task only, no tool wording) and `tests/check.py` for the new vendor.
+6. Add `instructions/<vendor>-mcp.md` and/or `instructions/<vendor>-skill.md` snippets.
+7. Add a job config under `configs/` declaring `mcp_servers:` and/or `skills:` plus the matching `extra_instruction_paths:` entry.
 
 ## Existing tasks
 

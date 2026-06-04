@@ -5,6 +5,9 @@ datasets:
   - path: tasks
     task_names: ["apify-*"]
 
+extra_instruction_paths:
+  - instructions/apify-mcp.md
+
 agents:
   - name: claude-code
     model_name: anthropic/claude-haiku-4.5
