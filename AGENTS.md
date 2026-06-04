@@ -52,3 +52,7 @@ Developer setup (installs, env vars, smoke tests) lives in `README.md`.
 
 - Be informative, brief, information-dense. No filler, no hedging, no restating the request. One useful line beats three padded ones.
 - Do not use em-dashes. Use a regular hyphen, comma, colon, or split the sentence instead.
+
+## Local environment instructions
+
+@AGENTS.local.md
