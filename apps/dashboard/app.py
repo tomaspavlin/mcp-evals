@@ -1,7 +1,10 @@
+import json
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 from harbor.viewer.scanner import JobScanner
@@ -21,6 +24,54 @@ def parse_variant(job_name: str) -> str:
         if tok in KNOWN_VARIANTS:
             return tok
     return "?"
+
+
+@st.cache_data(show_spinner=False)
+def load_trial_timeline(job_name: str, trial_name: str, mtime: float) -> dict:
+    # Reads agent/trajectory.json and returns:
+    #   line:   [{t, cum_tokens}] one point per step (for the cumulative line)
+    #   marks:  [{t, cum_tokens, name, args}] one point per tool call (markers)
+    #   n_steps, n_tool_calls
+    # `t` is seconds from the trial's first step.
+    del mtime
+    traj_path = JOBS_DIR / job_name / trial_name / "agent" / "trajectory.json"
+    empty = {"line": [], "marks": [], "n_steps": 0, "n_tool_calls": 0}
+    if not traj_path.exists():
+        return empty
+    try:
+        steps = json.loads(traj_path.read_text()).get("steps", [])
+    except (json.JSONDecodeError, OSError):
+        return empty
+    line: list[dict] = []
+    marks: list[dict] = []
+    t0: datetime | None = None
+    cum = 0
+    for s in steps:
+        ts = s.get("timestamp")
+        if not ts:
+            continue
+        when = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        if t0 is None:
+            t0 = when
+        t = (when - t0).total_seconds()
+        m = s.get("metrics") or {}
+        # prompt_tokens per-call already includes history; we still cumsum to
+        # reflect total billed token consumption (matches the cost chart).
+        cum += (m.get("prompt_tokens") or 0) + (m.get("completion_tokens") or 0)
+        line.append({"t": t, "cum_tokens": cum})
+        for tc in (s.get("tool_calls") or []):
+            marks.append({
+                "t": t,
+                "cum_tokens": cum,
+                "name": tc.get("function_name") or "?",
+                "args": json.dumps(tc.get("arguments") or {})[:300],
+            })
+    return {
+        "line": line,
+        "marks": marks,
+        "n_steps": len(steps),
+        "n_tool_calls": len(marks),
+    }
 
 
 @st.cache_data(show_spinner=False)
@@ -51,6 +102,7 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
             model_name = tr.config.agent.model_name
         out.append({
             "job": job_name,
+            "trial": trial_name,
             "variant": parse_variant(job_name),
             "task": tr.task_name,
             "agent": tr.agent_info.name if tr.agent_info else None,
@@ -206,3 +258,80 @@ fig_tokens = px.bar(
 )
 fig_tokens.update_xaxes(title=" | ".join(group_by))
 st.plotly_chart(fig_tokens, use_container_width=True)
+
+st.subheader("Trial timeline")
+task_names = sorted({t["task"] for t in trials if t.get("task")})
+if not task_names:
+    st.info("No tasks found in the selected trials.")
+else:
+    picked_task = st.selectbox("Task", task_names)
+    task_trials = [t for t in trials if t["task"] == picked_task]
+    # Style: color = variant, dash = (model, agent). Trials sharing all three
+    # render identically (intentional). Each distinct (variant, model, agent)
+    # combination contributes a single legend entry.
+    palette = px.colors.qualitative.Plotly
+    dash_cycle = ["solid", "dot", "dash", "longdash", "dashdot", "longdashdot"]
+    variants_seen = sorted({t["variant"] for t in task_trials})
+    ma_seen = sorted({(t.get("model") or "?", t.get("agent") or "?") for t in task_trials})
+    color_for = {v: palette[i % len(palette)] for i, v in enumerate(variants_seen)}
+    dash_for = {ma: dash_cycle[i % len(dash_cycle)] for i, ma in enumerate(ma_seen)}
+    legend_shown: set[tuple] = set()
+    fig_tl = go.Figure()
+    table_rows = []
+    for t in task_trials:
+        tl = load_trial_timeline(t["job"], t["trial"], mtimes.get(t["job"], 0.0))
+        label = f"{t['job']} / {t['trial']}"
+        table_rows.append({
+            "trial": t["trial"],
+            "job": t["job"],
+            "variant": t["variant"],
+            "model": t["model"],
+            "reward": t["reward"],
+            "errored": t["errored"],
+            "steps": tl["n_steps"],
+            "tool_calls": tl["n_tool_calls"],
+            "input_tokens": t["n_input"],
+            "cache_tokens": t["n_cache"],
+            "output_tokens": t["n_output"],
+            "cost_usd": t["cost_usd"],
+            "agent_exec_s": t["t_agent_exec"],
+        })
+        if not tl["line"]:
+            continue
+        variant = t["variant"]
+        ma = (t.get("model") or "?", t.get("agent") or "?")
+        style_key = (variant, ma)
+        color = color_for[variant]
+        dash = dash_for[ma]
+        group_label = f"{variant} | {ma[0]} / {ma[1]}"
+        show_legend = style_key not in legend_shown
+        legend_shown.add(style_key)
+        fig_tl.add_trace(go.Scatter(
+            x=[r["t"] for r in tl["line"]],
+            y=[r["cum_tokens"] for r in tl["line"]],
+            mode="lines",
+            name=group_label,
+            legendgroup=group_label,
+            showlegend=show_legend,
+            line=dict(color=color, dash=dash),
+            hovertemplate="t=%{x:.2f}s<br>tokens=%{y}<extra>" + label + "</extra>",
+        ))
+        if tl["marks"]:
+            fig_tl.add_trace(go.Scatter(
+                x=[r["t"] for r in tl["marks"]],
+                y=[r["cum_tokens"] for r in tl["marks"]],
+                mode="markers",
+                name=group_label,
+                legendgroup=group_label,
+                showlegend=False,
+                marker=dict(size=8, symbol="circle", color=color),
+                customdata=[[r["name"], r["args"]] for r in tl["marks"]],
+                hovertemplate="t=%{x:.2f}s<br>tokens=%{y}<br><b>%{customdata[0]}</b><br>%{customdata[1]}<extra>" + label + "</extra>",
+            ))
+    if not fig_tl.data:
+        st.info("No trajectory.json found for trials of this task.")
+    else:
+        fig_tl.update_xaxes(title="seconds from trial start")
+        fig_tl.update_yaxes(title="cumulative tokens (sum of per-call prompt + completion)")
+        st.plotly_chart(fig_tl, use_container_width=True)
+    st.dataframe(table_rows, use_container_width=True)
