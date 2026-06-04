@@ -13,6 +13,28 @@ JOBS_DIR = Path(__file__).resolve().parents[2] / "jobs"
 KNOWN_VARIANTS = {"mcp", "cli", "skill", "mcpc"}
 GROUP_KEYS = ["job", "variant", "task", "agent", "model"]
 
+# Channel-matching logic mirrored from
+# tasks/apify-fetch-actor-id/tests/check.py:_matches_channel.
+# Copied (not imported) because check.py runs inside the verifier container
+# and depends on rewardkit + a fixed /logs path; keep both in sync manually.
+# Differences vs check.py (latent bugs in check.py worth porting back):
+#   - lower-case function name (Claude Code emits `Bash`, check.py compares `"bash"`)
+#   - mcp channel also matches `mcp__apify__*` (Claude Code's MCP naming),
+#     not just the `apify_*` style used by other harnesses.
+VARIANT_CHANNEL = {"mcp": "mcp", "cli": "cli", "mcpc": "mcpc", "skill": "cli"}
+
+
+def matches_channel(name: str, args: dict, channel: str) -> bool:
+    name_l = (name or "").lower()
+    cmd = ((args or {}).get("command") or "").lstrip()
+    if channel == "mcp":
+        return name_l.startswith("apify_") or name_l.startswith("mcp__apify__")
+    if channel == "cli":
+        return name_l == "bash" and cmd.startswith("apify ")
+    if channel == "mcpc":
+        return name_l == "bash" and cmd.startswith("mcpc ")
+    return False
+
 st.set_page_config(page_title="mcp-evals dashboard", layout="wide")
 st.title("mcp-evals dashboard")
 
@@ -64,7 +86,7 @@ def load_trial_timeline(job_name: str, trial_name: str, mtime: float) -> dict:
                 "t": t,
                 "cum_tokens": cum,
                 "name": tc.get("function_name") or "?",
-                "args": json.dumps(tc.get("arguments") or {})[:300],
+                "args": tc.get("arguments") or {},
             })
     return {
         "line": line,
@@ -267,6 +289,7 @@ with tab_trials:
         st.info("No tasks found in the selected trials.")
     else:
         picked_task = st.selectbox("Task", task_names)
+        only_channel = st.checkbox("Show only channel events", value=False)
         task_trials = [t for t in trials if t["task"] == picked_task]
         # Style: color = variant, dash = (model, agent). Trials sharing all three
         # render identically (intentional). Each distinct (variant, model, agent)
@@ -280,9 +303,25 @@ with tab_trials:
         legend_shown: set[tuple] = set()
         fig_tl = go.Figure()
         table_rows = []
+        tool_call_rows = []
         for t in task_trials:
             tl = load_trial_timeline(t["job"], t["trial"], mtimes.get(t["job"], 0.0))
             label = f"{t['job']} / {t['trial']}"
+            expected_channel = VARIANT_CHANNEL.get(t["variant"])
+            channel_flags = [
+                matches_channel(m["name"], m["args"], expected_channel) if expected_channel else False
+                for m in tl["marks"]
+            ]
+            for m, is_channel in zip(tl["marks"], channel_flags):
+                tool_call_rows.append({
+                    "trial": t["trial"],
+                    "variant": t["variant"],
+                    "t_s": round(m["t"], 2),
+                    "cum_tokens": m["cum_tokens"],
+                    "tool": m["name"],
+                    "args": json.dumps(m["args"])[:300],
+                    "channel": "✓" if is_channel else "",
+                })
             table_rows.append({
                 "trial": t["trial"],
                 "job": t["job"],
@@ -318,16 +357,20 @@ with tab_trials:
                 line=dict(color=color, dash=dash),
                 hovertemplate="t=%{x:.2f}s<br>tokens=%{y}<extra>" + label + "</extra>",
             ))
-            if tl["marks"]:
+            visible_marks = [
+                (m, is_ch) for m, is_ch in zip(tl["marks"], channel_flags)
+                if not only_channel or is_ch
+            ]
+            if visible_marks:
                 fig_tl.add_trace(go.Scatter(
-                    x=[r["t"] for r in tl["marks"]],
-                    y=[r["cum_tokens"] for r in tl["marks"]],
+                    x=[m["t"] for m, _ in visible_marks],
+                    y=[m["cum_tokens"] for m, _ in visible_marks],
                     mode="markers",
                     name=group_label,
                     legendgroup=group_label,
                     showlegend=False,
                     marker=dict(size=8, symbol="circle", color=color),
-                    customdata=[[r["name"], r["args"]] for r in tl["marks"]],
+                    customdata=[[m["name"], json.dumps(m["args"])[:300]] for m, _ in visible_marks],
                     hovertemplate="t=%{x:.2f}s<br>tokens=%{y}<br><b>%{customdata[0]}</b><br>%{customdata[1]}<extra>" + label + "</extra>",
                 ))
         if not fig_tl.data:
@@ -337,3 +380,30 @@ with tab_trials:
             fig_tl.update_yaxes(title="cumulative tokens (sum of per-call prompt + completion)")
             st.plotly_chart(fig_tl, use_container_width=True)
         st.dataframe(table_rows, use_container_width=True)
+        st.subheader("Tool calls")
+        if tool_call_rows:
+            meta_for = {t["trial"]: t for t in task_trials}
+            trial_names = sorted({r["trial"] for r in tool_call_rows})
+
+            def _label(name: str) -> str:
+                t = meta_for.get(name, {})
+                return (
+                    f"{t.get('variant', '?')} | {t.get('model', '?')} / {t.get('agent', '?')} "
+                    f"- reward={t.get('reward', 0):.2f} - {name}"
+                )
+
+            picked_trial = st.selectbox("Trial", trial_names, format_func=_label)
+            filtered = [
+                {
+                    "t_s": r["t_s"],
+                    "channel": r["channel"],
+                    "tool": r["tool"],
+                    "args": r["args"],
+                    "cum_tokens": r["cum_tokens"],
+                }
+                for r in tool_call_rows
+                if r["trial"] == picked_trial and (not only_channel or r["channel"])
+            ]
+            st.dataframe(filtered, use_container_width=True)
+        else:
+            st.info("No tool calls recorded for trials of this task.")
