@@ -183,11 +183,6 @@ if not selected:
     st.info("Pick at least one job in the sidebar.")
     st.stop()
 
-group_by = st.sidebar.multiselect("Group by", GROUP_KEYS, default=["job"])
-if not group_by:
-    st.info("Pick at least one grouping dimension in the sidebar.")
-    st.stop()
-
 mtimes = {p.name: p.stat().st_mtime for p in job_dirs}
 trials: list[dict] = []
 for name in selected:
@@ -197,141 +192,148 @@ if not trials:
     st.warning("Selected jobs have no trial results yet.")
     st.stop()
 
-rows = aggregate(trials, group_by)
+tab_grouped, tab_trials = st.tabs(["Grouped", "Trial details"])
 
-st.subheader(f"Summary (grouped by {' | '.join(group_by)})")
-st.dataframe(rows, use_container_width=True)
+with tab_grouped:
+    group_by = st.multiselect("Group by", GROUP_KEYS, default=["job"])
+    if not group_by:
+        st.info("Pick at least one grouping dimension.")
+    else:
+        rows = aggregate(trials, group_by)
 
-st.subheader("Avg reward")
-fig = px.bar(rows, x="group", y="avg_reward", hover_data=["errored", "total"])
-fig.update_xaxes(title=" | ".join(group_by))
-fig.update_yaxes(range=[0, 1])
-st.plotly_chart(fig, use_container_width=True)
+        st.subheader(f"Summary (grouped by {' | '.join(group_by)})")
+        st.dataframe(rows, use_container_width=True)
 
-st.subheader("Cost (USD)")
-fig_cost = px.bar(rows, x="group", y="cost_usd", hover_data=["input_tokens", "cache_tokens", "output_tokens"])
-fig_cost.update_xaxes(title=" | ".join(group_by))
-st.plotly_chart(fig_cost, use_container_width=True)
+        st.subheader("Avg reward")
+        fig = px.bar(rows, x="group", y="avg_reward", hover_data=["errored", "total"])
+        fig.update_xaxes(title=" | ".join(group_by))
+        fig.update_yaxes(range=[0, 1])
+        st.plotly_chart(fig, use_container_width=True)
 
-st.subheader("Duration (s)")
-# Summed per-phase seconds across trials in the group. NOTE: trials run in
-# parallel, so this is not wall-clock time.
-duration_rows = []
-for r in rows:
-    duration_rows.append({"group": r["group"], "phase": "env setup", "seconds": r["env_setup_s"]})
-    duration_rows.append({"group": r["group"], "phase": "agent setup", "seconds": r["agent_setup_s"]})
-    duration_rows.append({"group": r["group"], "phase": "agent exec", "seconds": r["agent_exec_s"]})
-    duration_rows.append({"group": r["group"], "phase": "verifier", "seconds": r["verifier_s"]})
-fig_dur = px.bar(
-    duration_rows,
-    x="group",
-    y="seconds",
-    color="phase",
-    barmode="stack",
-    category_orders={"phase": ["env setup", "agent setup", "agent exec", "verifier"]},
-)
-fig_dur.update_xaxes(title=" | ".join(group_by))
-st.plotly_chart(fig_dur, use_container_width=True)
+        st.subheader("Cost (USD)")
+        fig_cost = px.bar(rows, x="group", y="cost_usd", hover_data=["input_tokens", "cache_tokens", "output_tokens"])
+        fig_cost.update_xaxes(title=" | ".join(group_by))
+        st.plotly_chart(fig_cost, use_container_width=True)
 
-st.subheader("Token usage")
-# n_input_tokens includes cache; uncached = input - cache. See harbor/viewer/server.py:_uncached_input.
-token_rows = []
-for r in rows:
-    n_in = r["input_tokens"] or 0
-    n_cache = r["cache_tokens"] or 0
-    n_out = r["output_tokens"] or 0
-    token_rows.append({"group": r["group"], "kind": "input (cached)", "tokens": n_cache})
-    token_rows.append({"group": r["group"], "kind": "input (uncached)", "tokens": max(0, n_in - n_cache)})
-    token_rows.append({"group": r["group"], "kind": "output", "tokens": n_out})
-fig_tokens = px.bar(
-    token_rows,
-    x="group",
-    y="tokens",
-    color="kind",
-    barmode="stack",
-    category_orders={"kind": ["input (cached)", "input (uncached)", "output"]},
-    color_discrete_map={
-        "input (cached)": "#9ecae1",
-        "input (uncached)": "#d62728",
-        "output": "#2ca02c",
-    },
-)
-fig_tokens.update_xaxes(title=" | ".join(group_by))
-st.plotly_chart(fig_tokens, use_container_width=True)
+        st.subheader("Duration (s)")
+        # Summed per-phase seconds across trials in the group. NOTE: trials run in
+        # parallel, so this is not wall-clock time.
+        duration_rows = []
+        for r in rows:
+            duration_rows.append({"group": r["group"], "phase": "env setup", "seconds": r["env_setup_s"]})
+            duration_rows.append({"group": r["group"], "phase": "agent setup", "seconds": r["agent_setup_s"]})
+            duration_rows.append({"group": r["group"], "phase": "agent exec", "seconds": r["agent_exec_s"]})
+            duration_rows.append({"group": r["group"], "phase": "verifier", "seconds": r["verifier_s"]})
+        fig_dur = px.bar(
+            duration_rows,
+            x="group",
+            y="seconds",
+            color="phase",
+            barmode="stack",
+            category_orders={"phase": ["env setup", "agent setup", "agent exec", "verifier"]},
+        )
+        fig_dur.update_xaxes(title=" | ".join(group_by))
+        st.plotly_chart(fig_dur, use_container_width=True)
 
-st.subheader("Trial timeline")
-task_names = sorted({t["task"] for t in trials if t.get("task")})
-if not task_names:
-    st.info("No tasks found in the selected trials.")
-else:
-    picked_task = st.selectbox("Task", task_names)
-    task_trials = [t for t in trials if t["task"] == picked_task]
-    # Style: color = variant, dash = (model, agent). Trials sharing all three
-    # render identically (intentional). Each distinct (variant, model, agent)
-    # combination contributes a single legend entry.
-    palette = px.colors.qualitative.Plotly
-    dash_cycle = ["solid", "dot", "dash", "longdash", "dashdot", "longdashdot"]
-    variants_seen = sorted({t["variant"] for t in task_trials})
-    ma_seen = sorted({(t.get("model") or "?", t.get("agent") or "?") for t in task_trials})
-    color_for = {v: palette[i % len(palette)] for i, v in enumerate(variants_seen)}
-    dash_for = {ma: dash_cycle[i % len(dash_cycle)] for i, ma in enumerate(ma_seen)}
-    legend_shown: set[tuple] = set()
-    fig_tl = go.Figure()
-    table_rows = []
-    for t in task_trials:
-        tl = load_trial_timeline(t["job"], t["trial"], mtimes.get(t["job"], 0.0))
-        label = f"{t['job']} / {t['trial']}"
-        table_rows.append({
-            "trial": t["trial"],
-            "job": t["job"],
-            "variant": t["variant"],
-            "model": t["model"],
-            "reward": t["reward"],
-            "errored": t["errored"],
-            "steps": tl["n_steps"],
-            "tool_calls": tl["n_tool_calls"],
-            "input_tokens": t["n_input"],
-            "cache_tokens": t["n_cache"],
-            "output_tokens": t["n_output"],
-            "cost_usd": t["cost_usd"],
-            "agent_exec_s": t["t_agent_exec"],
-        })
-        if not tl["line"]:
-            continue
-        variant = t["variant"]
-        ma = (t.get("model") or "?", t.get("agent") or "?")
-        style_key = (variant, ma)
-        color = color_for[variant]
-        dash = dash_for[ma]
-        group_label = f"{variant} | {ma[0]} / {ma[1]}"
-        show_legend = style_key not in legend_shown
-        legend_shown.add(style_key)
-        fig_tl.add_trace(go.Scatter(
-            x=[r["t"] for r in tl["line"]],
-            y=[r["cum_tokens"] for r in tl["line"]],
-            mode="lines",
-            name=group_label,
-            legendgroup=group_label,
-            showlegend=show_legend,
-            line=dict(color=color, dash=dash),
-            hovertemplate="t=%{x:.2f}s<br>tokens=%{y}<extra>" + label + "</extra>",
-        ))
-        if tl["marks"]:
+        st.subheader("Token usage")
+        # n_input_tokens includes cache; uncached = input - cache. See harbor/viewer/server.py:_uncached_input.
+        token_rows = []
+        for r in rows:
+            n_in = r["input_tokens"] or 0
+            n_cache = r["cache_tokens"] or 0
+            n_out = r["output_tokens"] or 0
+            token_rows.append({"group": r["group"], "kind": "input (cached)", "tokens": n_cache})
+            token_rows.append({"group": r["group"], "kind": "input (uncached)", "tokens": max(0, n_in - n_cache)})
+            token_rows.append({"group": r["group"], "kind": "output", "tokens": n_out})
+        fig_tokens = px.bar(
+            token_rows,
+            x="group",
+            y="tokens",
+            color="kind",
+            barmode="stack",
+            category_orders={"kind": ["input (cached)", "input (uncached)", "output"]},
+            color_discrete_map={
+                "input (cached)": "#9ecae1",
+                "input (uncached)": "#d62728",
+                "output": "#2ca02c",
+            },
+        )
+        fig_tokens.update_xaxes(title=" | ".join(group_by))
+        st.plotly_chart(fig_tokens, use_container_width=True)
+
+with tab_trials:
+    task_names = sorted({t["task"] for t in trials if t.get("task")})
+    if not task_names:
+        st.info("No tasks found in the selected trials.")
+    else:
+        picked_task = st.selectbox("Task", task_names)
+        task_trials = [t for t in trials if t["task"] == picked_task]
+        # Style: color = variant, dash = (model, agent). Trials sharing all three
+        # render identically (intentional). Each distinct (variant, model, agent)
+        # combination contributes a single legend entry.
+        palette = px.colors.qualitative.Plotly
+        dash_cycle = ["solid", "dot", "dash", "longdash", "dashdot", "longdashdot"]
+        variants_seen = sorted({t["variant"] for t in task_trials})
+        ma_seen = sorted({(t.get("model") or "?", t.get("agent") or "?") for t in task_trials})
+        color_for = {v: palette[i % len(palette)] for i, v in enumerate(variants_seen)}
+        dash_for = {ma: dash_cycle[i % len(dash_cycle)] for i, ma in enumerate(ma_seen)}
+        legend_shown: set[tuple] = set()
+        fig_tl = go.Figure()
+        table_rows = []
+        for t in task_trials:
+            tl = load_trial_timeline(t["job"], t["trial"], mtimes.get(t["job"], 0.0))
+            label = f"{t['job']} / {t['trial']}"
+            table_rows.append({
+                "trial": t["trial"],
+                "job": t["job"],
+                "variant": t["variant"],
+                "model": t["model"],
+                "reward": t["reward"],
+                "errored": t["errored"],
+                "steps": tl["n_steps"],
+                "tool_calls": tl["n_tool_calls"],
+                "input_tokens": t["n_input"],
+                "cache_tokens": t["n_cache"],
+                "output_tokens": t["n_output"],
+                "cost_usd": t["cost_usd"],
+                "agent_exec_s": t["t_agent_exec"],
+            })
+            if not tl["line"]:
+                continue
+            variant = t["variant"]
+            ma = (t.get("model") or "?", t.get("agent") or "?")
+            style_key = (variant, ma)
+            color = color_for[variant]
+            dash = dash_for[ma]
+            group_label = f"{variant} | {ma[0]} / {ma[1]}"
+            show_legend = style_key not in legend_shown
+            legend_shown.add(style_key)
             fig_tl.add_trace(go.Scatter(
-                x=[r["t"] for r in tl["marks"]],
-                y=[r["cum_tokens"] for r in tl["marks"]],
-                mode="markers",
+                x=[r["t"] for r in tl["line"]],
+                y=[r["cum_tokens"] for r in tl["line"]],
+                mode="lines",
                 name=group_label,
                 legendgroup=group_label,
-                showlegend=False,
-                marker=dict(size=8, symbol="circle", color=color),
-                customdata=[[r["name"], r["args"]] for r in tl["marks"]],
-                hovertemplate="t=%{x:.2f}s<br>tokens=%{y}<br><b>%{customdata[0]}</b><br>%{customdata[1]}<extra>" + label + "</extra>",
+                showlegend=show_legend,
+                line=dict(color=color, dash=dash),
+                hovertemplate="t=%{x:.2f}s<br>tokens=%{y}<extra>" + label + "</extra>",
             ))
-    if not fig_tl.data:
-        st.info("No trajectory.json found for trials of this task.")
-    else:
-        fig_tl.update_xaxes(title="seconds from trial start")
-        fig_tl.update_yaxes(title="cumulative tokens (sum of per-call prompt + completion)")
-        st.plotly_chart(fig_tl, use_container_width=True)
-    st.dataframe(table_rows, use_container_width=True)
+            if tl["marks"]:
+                fig_tl.add_trace(go.Scatter(
+                    x=[r["t"] for r in tl["marks"]],
+                    y=[r["cum_tokens"] for r in tl["marks"]],
+                    mode="markers",
+                    name=group_label,
+                    legendgroup=group_label,
+                    showlegend=False,
+                    marker=dict(size=8, symbol="circle", color=color),
+                    customdata=[[r["name"], r["args"]] for r in tl["marks"]],
+                    hovertemplate="t=%{x:.2f}s<br>tokens=%{y}<br><b>%{customdata[0]}</b><br>%{customdata[1]}<extra>" + label + "</extra>",
+                ))
+        if not fig_tl.data:
+            st.info("No trajectory.json found for trials of this task.")
+        else:
+            fig_tl.update_xaxes(title="seconds from trial start")
+            fig_tl.update_yaxes(title="cumulative tokens (sum of per-call prompt + completion)")
+            st.plotly_chart(fig_tl, use_container_width=True)
+        st.dataframe(table_rows, use_container_width=True)
