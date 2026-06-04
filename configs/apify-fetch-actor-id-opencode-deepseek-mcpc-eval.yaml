@@ -18,3 +18,7 @@ environment:
   # docker (local) until Apify hosts are added to Daytona's outbound allowlist.
   # See docs/harbor-constraints.md "Daytona outbound network is allowlisted by tier".
   type: docker
+
+verifier:
+  env:
+    EVAL_VARIANT: mcpc
