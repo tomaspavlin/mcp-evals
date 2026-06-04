@@ -1,7 +1,7 @@
 #!/bin/bash
-# Run a Harbor job config with .env loaded and a timestamped --job-name so
-# config edits never collide with a prior run's lock. Extra args are forwarded
-# to `harbor run`.
+# Run a Harbor job config with .env loaded and --job-name set to the config
+# basename. On collision (FileExistsError) remove jobs/<name> and rerun. Extra
+# args are forwarded to `harbor run`.
 #
 # Usage: ./scripts/run.sh configs/<name>.yaml [harbor run flags...]
 set -eu
@@ -26,6 +26,6 @@ if [ -f .env ]; then
   set +a
 fi
 
-JOB_NAME="$(basename "$CONFIG" .yaml)-$(date +%Y%m%d-%H%M%S)"
+JOB_NAME="$(basename "$CONFIG" .yaml)"
 
 yes | harbor run -c "$CONFIG" --job-name "$JOB_NAME" "$@"
