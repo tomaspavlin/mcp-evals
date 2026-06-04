@@ -216,7 +216,7 @@ if not trials:
     st.warning("Selected jobs have no trial results yet.")
     st.stop()
 
-tab_grouped, tab_trials = st.tabs(["Grouped", "Trial details"])
+tab_grouped, tab_trials, tab_grid = st.tabs(["Grouped", "Trial details", "Token grid"])
 
 with tab_grouped:
     group_by = st.multiselect("Group by", GROUP_KEYS, default=["job"])
@@ -422,3 +422,51 @@ with tab_trials:
             st.dataframe(filtered, use_container_width=True)
         else:
             st.info("No tool calls recorded for trials of this task.")
+
+with tab_grid:
+    # Per (task, agent+model, variant) avg-tokens stacked bars, faceted by row=task, col=agent+model.
+    cells: dict[tuple, dict] = defaultdict(lambda: {"n_input": 0, "n_cache": 0, "n_output": 0, "count": 0})
+    for t in trials:
+        am = f"{t.get('agent') or '?'} / {t.get('model') or '?'}"
+        key = (t["task"], am, t["variant"])
+        c = cells[key]
+        c["n_input"] += t["n_input"]
+        c["n_cache"] += t["n_cache"]
+        c["n_output"] += t["n_output"]
+        c["count"] += 1
+    grid_rows = []
+    for (task, am, variant), c in cells.items():
+        n = c["count"] or 1
+        grid_rows.append({"task": task, "agent_model": am, "variant": variant,
+                          "kind": "input (cached)", "tokens": c["n_cache"] / n})
+        grid_rows.append({"task": task, "agent_model": am, "variant": variant,
+                          "kind": "input (uncached)", "tokens": max(0, c["n_input"] - c["n_cache"]) / n})
+        grid_rows.append({"task": task, "agent_model": am, "variant": variant,
+                          "kind": "output", "tokens": c["n_output"] / n})
+    if not grid_rows:
+        st.info("No trial data in the selected jobs.")
+    else:
+        variant_order = sorted({r["variant"] for r in grid_rows})
+        fig_grid = px.bar(
+            grid_rows,
+            x="variant",
+            y="tokens",
+            color="kind",
+            facet_col="agent_model",
+            facet_row="task",
+            barmode="stack",
+            category_orders={
+                "kind": ["input (cached)", "input (uncached)", "output"],
+                "variant": variant_order,
+            },
+            color_discrete_map={
+                "input (cached)": "#9ecae1",
+                "input (uncached)": "#d62728",
+                "output": "#2ca02c",
+            },
+        )
+        # Facet titles default to "task=...", strip the prefix.
+        fig_grid.for_each_annotation(lambda a: a.update(text=a.text.split("=", 1)[-1]))
+        n_tasks = len({r["task"] for r in grid_rows})
+        fig_grid.update_layout(height=max(300, 260 * n_tasks))
+        st.plotly_chart(fig_grid, use_container_width=True)
