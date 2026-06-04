@@ -76,14 +76,16 @@ def load_trial_timeline(job_name: str, trial_name: str, mtime: float) -> dict:
         if t0 is None:
             t0 = when
         t = (when - t0).total_seconds()
+        step_id = s.get("step_id")
         m = s.get("metrics") or {}
         # prompt_tokens per-call already includes history; we still cumsum to
         # reflect total billed token consumption (matches the cost chart).
         cum += (m.get("prompt_tokens") or 0) + (m.get("completion_tokens") or 0)
-        line.append({"t": t, "cum_tokens": cum})
+        line.append({"t": t, "step": step_id, "cum_tokens": cum})
         for tc in (s.get("tool_calls") or []):
             marks.append({
                 "t": t,
+                "step": step_id,
                 "cum_tokens": cum,
                 "name": tc.get("function_name") or "?",
                 "args": tc.get("arguments") or {},
@@ -289,6 +291,7 @@ with tab_trials:
         st.info("No tasks found in the selected trials.")
     else:
         picked_task = st.selectbox("Task", task_names)
+        x_axis = st.selectbox("X axis", ["time (s)", "step", "trial"], index=0)
         only_channel = st.checkbox("Show only channel events", value=False)
         task_trials = [t for t in trials if t["task"] == picked_task]
         # Style: color = variant, dash = (model, agent). Trials sharing all three
@@ -304,7 +307,7 @@ with tab_trials:
         fig_tl = go.Figure()
         table_rows = []
         tool_call_rows = []
-        for t in task_trials:
+        for trial_idx, t in enumerate(task_trials, start=1):
             tl = load_trial_timeline(t["job"], t["trial"], mtimes.get(t["job"], 0.0))
             label = f"{t['job']} / {t['trial']}"
             expected_channel = VARIANT_CHANNEL.get(t["variant"])
@@ -347,36 +350,48 @@ with tab_trials:
             group_label = f"{variant} | {ma[0]} / {ma[1]}"
             show_legend = style_key not in legend_shown
             legend_shown.add(style_key)
-            fig_tl.add_trace(go.Scatter(
-                x=[r["t"] for r in tl["line"]],
-                y=[r["cum_tokens"] for r in tl["line"]],
-                mode="lines",
-                name=group_label,
-                legendgroup=group_label,
-                showlegend=show_legend,
-                line=dict(color=color, dash=dash),
-                hovertemplate="t=%{x:.2f}s<br>tokens=%{y}<extra>" + label + "</extra>",
-            ))
+
+            def _x(r):
+                if x_axis == "step":
+                    return r.get("step")
+                if x_axis == "trial":
+                    return t["trial"]
+                return r["t"]
+
+            if x_axis != "trial":
+                fig_tl.add_trace(go.Scatter(
+                    x=[_x(r) for r in tl["line"]],
+                    y=[r["cum_tokens"] for r in tl["line"]],
+                    mode="lines",
+                    name=group_label,
+                    legendgroup=group_label,
+                    showlegend=show_legend,
+                    line=dict(color=color, dash=dash),
+                    hovertemplate="x=%{x}<br>tokens=%{y}<extra>" + label + "</extra>",
+                ))
             visible_marks = [
                 (m, is_ch) for m, is_ch in zip(tl["marks"], channel_flags)
                 if not only_channel or is_ch
             ]
             if visible_marks:
                 fig_tl.add_trace(go.Scatter(
-                    x=[m["t"] for m, _ in visible_marks],
+                    x=[_x(m) for m, _ in visible_marks],
                     y=[m["cum_tokens"] for m, _ in visible_marks],
                     mode="markers",
                     name=group_label,
                     legendgroup=group_label,
-                    showlegend=False,
+                    # In trial mode there's no line trace, so the markers have
+                    # to carry the legend entry themselves.
+                    showlegend=(x_axis == "trial" and show_legend),
                     marker=dict(size=8, symbol="circle", color=color),
                     customdata=[[m["name"], json.dumps(m["args"])[:300]] for m, _ in visible_marks],
-                    hovertemplate="t=%{x:.2f}s<br>tokens=%{y}<br><b>%{customdata[0]}</b><br>%{customdata[1]}<extra>" + label + "</extra>",
+                    hovertemplate="x=%{x}<br>tokens=%{y}<br><b>%{customdata[0]}</b><br>%{customdata[1]}<extra>" + label + "</extra>",
                 ))
         if not fig_tl.data:
             st.info("No trajectory.json found for trials of this task.")
         else:
-            fig_tl.update_xaxes(title="seconds from trial start")
+            xaxis_title = {"time (s)": "seconds from trial start", "step": "step id", "trial": "trial"}[x_axis]
+            fig_tl.update_xaxes(title=xaxis_title)
             fig_tl.update_yaxes(title="cumulative tokens (sum of per-call prompt + completion)")
             st.plotly_chart(fig_tl, use_container_width=True)
         st.dataframe(table_rows, use_container_width=True)
