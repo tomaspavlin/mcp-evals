@@ -32,9 +32,9 @@ Start with **read-only tool calls** for simplicity. Test production / staging re
 
 ## Configs
 
-Job configs live in `configs/*.yaml` (Harbor `JobConfig` schema). Run with `harbor run -c configs/<name>.yaml`. CLI flags override fields. Naming: `<dataset>-<harness>-<model>-<purpose>.yaml` (e.g. `apify-fetch-actor-id-opencode-grok-eval.yaml`). `<purpose>` is `eval` for new configs; legacy `-smoketest` configs predate this. Keep secrets in `.env`, never in yaml.
+Job configs live in `configs/*.yaml` (Harbor `JobConfig` schema). Run them with `./scripts/run.sh configs/<name>.yaml` - it sources `.env`, generates a timestamped `--job-name`, and pipes `yes` past the env-confirmation prompt. Extra `harbor run` flags pass through. Naming: `<dataset>-<harness>-<model>-<tool>-<purpose>.yaml` (e.g. `apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml`); `<tool>` is `mcp` or `skill` for MCP/skill variants of the same task. `<purpose>` is `eval` for new configs; legacy `-smoketest` configs predate this. Keep secrets in `.env`, never in yaml.
 
-`harbor run` has no `--env-file` flag. Export vars in the shell first (`set -a; source .env; set +a`) before invoking it.
+Direct `harbor run -c …` works but you must `set -a; source .env; set +a` first (no `--env-file` flag) and pick a fresh `--job-name` after any config change (else `FileExistsError`). `scripts/run.sh` handles both.
 
 ## Project docs
 

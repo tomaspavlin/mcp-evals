@@ -50,9 +50,10 @@ harbor run -c configs/swebench-haiku-smoketest.yaml -m anthropic/claude-sonnet-4
 ## Running a config
 
 ```bash
-set -a; source .env; set +a
-harbor run -c configs/apify-all-haiku-smoketest.yaml
+./scripts/run.sh configs/apify-all-haiku-smoketest.yaml
 ```
+
+Extra flags pass through, e.g. `./scripts/run.sh configs/<name>.yaml --env daytona`.
 
 ## Viewing results
 
