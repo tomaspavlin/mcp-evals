@@ -1,7 +1,8 @@
 #!/bin/bash
 # Run a Harbor job config with .env loaded and --job-name set to the config
 # basename. On collision (FileExistsError) remove jobs/<name> and rerun. Extra
-# args are forwarded to `harbor run`.
+# args are forwarded to `harbor run`. Passes `-y` to auto-confirm the host-env
+# prompt (harbor reads /dev/tty, so `yes |` does not work).
 #
 # Usage: ./scripts/run.sh configs/<name>.yaml [harbor run flags...]
 set -eu
@@ -28,4 +29,4 @@ fi
 
 JOB_NAME="$(basename "$CONFIG" .yaml)"
 
-yes | harbor run -c "$CONFIG" --job-name "$JOB_NAME" "$@"
+harbor run -y -c "$CONFIG" --job-name "$JOB_NAME" "$@"

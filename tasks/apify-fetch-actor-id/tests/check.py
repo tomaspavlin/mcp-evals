@@ -58,4 +58,5 @@ def actor_id_file_exists(workspace: Path) -> bool:
 
 @criterion
 def actor_id_matches(workspace: Path) -> bool:
-    return (workspace / "actor_id.txt").read_text().strip() == EXPECTED_ID
+    f = workspace / "actor_id.txt"
+    return f.is_file() and f.read_text().strip() == EXPECTED_ID
