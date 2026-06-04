@@ -58,7 +58,11 @@ Extra flags pass through, e.g. `./scripts/run.sh configs/<name>.yaml --env dayto
 ## Viewing results
 
 ```bash
-harbor view jobs/
+harbor view jobs
 ```
 
-or `harbor view jobs/<job-name>/`
+## Viewing tasks
+
+```bash
+harbor view tasks
+```
