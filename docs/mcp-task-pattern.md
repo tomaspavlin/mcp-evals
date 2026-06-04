@@ -19,7 +19,7 @@ tasks/<name>/
   task.toml                  # env passthrough only; no MCP block
   instruction.md             # task only - no mention of tool variant
   environment/
-    Dockerfile               # node:20-bookworm + `npm install -g mcp-remote`
+    Dockerfile               # node:22-bookworm + `npm install -g mcp-remote apify-cli`
     apify-mcp-proxy.sh       # the wrapper (see template below)
   tests/
     test.sh, check.py        # Reward Kit verifier (see below)
@@ -76,7 +76,7 @@ agents:
   - name: opencode
     model_name: openrouter/deepseek/deepseek-chat-v3.1
     skills:
-      - skills/apify-api          # host path, relative to repo root
+      - skills/apify-ultimate-scraper   # host path, relative to repo root
 ```
 
 `extra_instruction_paths` is a job-level field. Each file's contents get appended to the task's `instruction.md` with `\n\n` separators (`src/harbor/models/task/task.py:181`).

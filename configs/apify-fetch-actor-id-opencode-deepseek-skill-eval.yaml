@@ -11,7 +11,7 @@ agents:
   - name: opencode
     model_name: openrouter/deepseek/deepseek-chat-v3.1
     skills:
-      - skills/apify-api
+      - skills/apify-ultimate-scraper
     kwargs:
       max_budget_usd: 1.50
       max_turns: 20
