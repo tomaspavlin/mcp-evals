@@ -35,9 +35,17 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
             continue
         n_in, n_cache, n_out, cost = tr.compute_token_cost_totals()
         errored = tr.exception_info is not None
-        # Match the job-level `(n_completed - n_errored)/total` semantics from
-        # harbor/models/job/result.py: every recorded trial counts as completed.
-        passed = not errored
+        rewards = (
+            tr.verifier_result.rewards
+            if tr.verifier_result and tr.verifier_result.rewards
+            else None
+        )
+        reward = sum(rewards.values()) / len(rewards) if rewards else 0.0
+
+        def _secs(ti):
+            if ti is None or ti.started_at is None or ti.finished_at is None:
+                return 0.0
+            return (ti.finished_at - ti.started_at).total_seconds()
         model_name = None
         if tr.config and tr.config.agent:
             model_name = tr.config.agent.model_name
@@ -47,20 +55,25 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
             "task": tr.task_name,
             "agent": tr.agent_info.name if tr.agent_info else None,
             "model": model_name,
-            "passed": passed,
+            "reward": reward,
             "errored": errored,
             "n_input": n_in or 0,
             "n_cache": n_cache or 0,
             "n_output": n_out or 0,
             "cost_usd": cost or 0.0,
+            "t_env_setup": _secs(tr.environment_setup),
+            "t_agent_setup": _secs(tr.agent_setup),
+            "t_agent_exec": _secs(tr.agent_execution),
+            "t_verifier": _secs(tr.verifier),
         })
     return out
 
 
 def aggregate(trials: list[dict], by: list[str]) -> list[dict]:
     groups: dict[str, dict] = defaultdict(lambda: {
-        "completed": 0, "errored": 0, "total": 0,
+        "reward_sum": 0.0, "errored": 0, "total": 0,
         "cost_usd": 0.0, "n_input": 0, "n_cache": 0, "n_output": 0,
+        "t_env_setup": 0.0, "t_agent_setup": 0.0, "t_agent_exec": 0.0, "t_verifier": 0.0,
     })
     for t in trials:
         key = " | ".join(str(t.get(b) or "?") for b in by)
@@ -68,25 +81,31 @@ def aggregate(trials: list[dict], by: list[str]) -> list[dict]:
         g["total"] += 1
         if t["errored"]:
             g["errored"] += 1
-        elif t["passed"]:
-            g["completed"] += 1
+        g["reward_sum"] += t["reward"]
         g["cost_usd"] += t["cost_usd"]
         g["n_input"] += t["n_input"]
         g["n_cache"] += t["n_cache"]
         g["n_output"] += t["n_output"]
+        g["t_env_setup"] += t["t_env_setup"]
+        g["t_agent_setup"] += t["t_agent_setup"]
+        g["t_agent_exec"] += t["t_agent_exec"]
+        g["t_verifier"] += t["t_verifier"]
     rows = []
     for key, g in groups.items():
         total = g["total"] or 1
         rows.append({
             "group": key,
             "total": g["total"],
-            "completed": g["completed"],
             "errored": g["errored"],
-            "pass_rate": (g["completed"] - g["errored"]) / total,
+            "avg_reward": g["reward_sum"] / total,
             "cost_usd": g["cost_usd"],
             "input_tokens": g["n_input"],
             "cache_tokens": g["n_cache"],
             "output_tokens": g["n_output"],
+            "env_setup_s": g["t_env_setup"],
+            "agent_setup_s": g["t_agent_setup"],
+            "agent_exec_s": g["t_agent_exec"],
+            "verifier_s": g["t_verifier"],
         })
     rows.sort(key=lambda r: r["group"])
     return rows
@@ -131,8 +150,8 @@ rows = aggregate(trials, group_by)
 st.subheader(f"Summary (grouped by {' | '.join(group_by)})")
 st.dataframe(rows, use_container_width=True)
 
-st.subheader("Pass rate")
-fig = px.bar(rows, x="group", y="pass_rate", hover_data=["completed", "errored", "total"])
+st.subheader("Avg reward")
+fig = px.bar(rows, x="group", y="avg_reward", hover_data=["errored", "total"])
 fig.update_xaxes(title=" | ".join(group_by))
 fig.update_yaxes(range=[0, 1])
 st.plotly_chart(fig, use_container_width=True)
@@ -141,6 +160,26 @@ st.subheader("Cost (USD)")
 fig_cost = px.bar(rows, x="group", y="cost_usd", hover_data=["input_tokens", "cache_tokens", "output_tokens"])
 fig_cost.update_xaxes(title=" | ".join(group_by))
 st.plotly_chart(fig_cost, use_container_width=True)
+
+st.subheader("Duration (s)")
+# Summed per-phase seconds across trials in the group. NOTE: trials run in
+# parallel, so this is not wall-clock time.
+duration_rows = []
+for r in rows:
+    duration_rows.append({"group": r["group"], "phase": "env setup", "seconds": r["env_setup_s"]})
+    duration_rows.append({"group": r["group"], "phase": "agent setup", "seconds": r["agent_setup_s"]})
+    duration_rows.append({"group": r["group"], "phase": "agent exec", "seconds": r["agent_exec_s"]})
+    duration_rows.append({"group": r["group"], "phase": "verifier", "seconds": r["verifier_s"]})
+fig_dur = px.bar(
+    duration_rows,
+    x="group",
+    y="seconds",
+    color="phase",
+    barmode="stack",
+    category_orders={"phase": ["env setup", "agent setup", "agent exec", "verifier"]},
+)
+fig_dur.update_xaxes(title=" | ".join(group_by))
+st.plotly_chart(fig_dur, use_container_width=True)
 
 st.subheader("Token usage")
 # n_input_tokens includes cache; uncached = input - cache. See harbor/viewer/server.py:_uncached_input.
