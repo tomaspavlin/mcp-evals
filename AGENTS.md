@@ -32,7 +32,7 @@ Start with **read-only tool calls** for simplicity. Test production / staging re
 
 ## Configs
 
-Job configs live in `configs/*.yaml` (Harbor `JobConfig` schema). Run them with `./scripts/run.sh configs/<name>.yaml` - it sources `.env`, sets `--job-name` to the config basename, and pipes `yes` past the env-confirmation prompt. Extra `harbor run` flags pass through. Naming: `<dataset>-<harness>-<model>-<tool>-<purpose>.yaml` (e.g. `apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml`); `<tool>` is `mcp` or `skill` for MCP/skill variants of the same task. `<purpose>` is `eval` for new configs; legacy `-smoketest` configs predate this. Keep secrets in `.env`, never in yaml.
+Job configs live in `configs/*.yaml` (Harbor `JobConfig` schema). Run them with `./scripts/run.sh configs/<name>.yaml` - it sources `.env`, sets `--job-name` to the config basename, and pipes `yes` past the env-confirmation prompt. Extra `harbor run` flags pass through. Naming: `<dataset>-<harness>-<model>-<tool>-<purpose>.yaml` (e.g. `apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml`); `<tool>` is `mcp`, `cli`, `skill`, or `mcpc` (shell-driven MCP via [`@apify/mcpc`](https://github.com/apify/mcpc)) for variants of the same task. `<purpose>` is `eval` for new configs; legacy `-smoketest` configs predate this. Keep secrets in `.env`, never in yaml.
 
 If the script fails with `FileExistsError` (job dir already exists from a prior run), remove `jobs/<job-name>/` and rerun.
 
