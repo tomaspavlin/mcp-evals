@@ -61,6 +61,14 @@ Extra flags pass through, e.g. `./scripts/run.sh configs/<name>.yaml --env dayto
 harbor view jobs
 ```
 
+Project-specific plots (MCP vs CLI vs skill comparisons, etc.) live in a custom app:
+
+```bash
+apps/dashboard/.venv/bin/streamlit run apps/dashboard/app.py
+```
+
+See `apps/dashboard/README.md` for first-time setup.
+
 ## Viewing tasks
 
 ```bash

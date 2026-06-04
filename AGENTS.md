@@ -38,6 +38,10 @@ If the script fails with `FileExistsError` (job dir already exists from a prior 
 
 Direct `harbor run -c …` works but you must `set -a; source .env; set +a` first (no `--env-file` flag). `scripts/run.sh` handles that.
 
+## Dashboard
+
+Custom Streamlit app at `apps/dashboard/` for project-specific plots over `jobs/`. Reads via Harbor's `JobScanner` so schema parsing stays in sync. Complements `harbor view jobs`, does not replace it. See `apps/dashboard/README.md` for setup and run instructions.
+
 ## Project docs
 
 Read these before proposing architecture:
