@@ -1,4 +1,4 @@
-job_name: apify-fetch-actor-id-opencode-deepseek-eval
+job_name: apify-fetch-actor-id-opencode-deepseek-skill-eval
 n_concurrent_trials: 1
 
 tasks:
@@ -7,6 +7,8 @@ tasks:
 agents:
   - name: opencode
     model_name: openrouter/deepseek/deepseek-chat-v3.1
+    skills:
+      - skills/apify-api
     kwargs:
       max_budget_usd: 1.50
       max_turns: 20

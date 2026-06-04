@@ -8,6 +8,11 @@ datasets:
 agents:
   - name: opencode
     model_name: openrouter/deepseek/deepseek-chat-v3.1
+    mcp_servers:
+      - name: apify
+        transport: stdio
+        command: /usr/local/bin/apify-mcp-proxy
+        args: []
     kwargs:
       max_budget_usd: 1.50
       max_turns: 20

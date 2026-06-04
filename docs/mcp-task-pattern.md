@@ -1,14 +1,14 @@
-# MCP task pattern
+# Task pattern: MCP and skill variants
 
-How we wire an auth'd remote MCP into a Harbor task. Fork this to add another vendor (Linear, Notion, hosted GitHub).
+How we wire an auth'd remote MCP or a skill into a Harbor task. The same task dir backs both variants — the tool choice lives in the job config, not `task.toml`.
 
 ## The auth blocker
 
-Harbor's `MCPServerConfig` accepts `name | transport | url | command | args`. **No `headers`, no `env`.** Unsupported fields are dropped on purpose. So you cannot declare an `Authorization: Bearer <TOKEN>` remote MCP in `task.toml`. Confirmed against `src/harbor/models/task/config.py` + PR #1675.
+Harbor's `MCPServerConfig` accepts `name | transport | url | command | args`. **No `headers`, no `env`.** Unsupported fields are dropped on purpose. So you cannot declare an `Authorization: Bearer <TOKEN>` remote MCP. Confirmed against `src/harbor/models/task/config.py` + PR #1675.
 
 ## The workaround: stdio wrapper
 
-- Declare a stdio MCP in `task.toml` whose `command` is a wrapper script.
+- Declare a stdio MCP whose `command` is a wrapper script.
 - Wrapper runs `mcp-remote` (npm proxy), which speaks stdio locally and forwards to the remote streamable-http endpoint with an injected `Authorization` header.
 - Token reaches the container via `[environment.env]` in `task.toml`, which IS supported by Harbor and forwards from host `os.environ`.
 
@@ -16,28 +16,58 @@ Harbor's `MCPServerConfig` accepts `name | transport | url | command | args`. **
 
 ```
 tasks/<name>/
-  task.toml
-  instruction.md
+  task.toml                  # env passthrough only; no MCP block
+  instruction.md             # tool-agnostic wording (works for MCP or skill)
   environment/
     Dockerfile               # node:20-bookworm + `npm install -g mcp-remote`
     apify-mcp-proxy.sh       # the wrapper (see template below)
   tests/
-    test.sh, check.py          # Reward Kit verifier (see below)
+    test.sh, check.py        # Reward Kit verifier (see below)
   solution/solve.sh
+
+skills/<name>/
+  SKILL.md                   # Anthropic skill format: frontmatter + body
+
+configs/
+  <task>-<harness>-<model>-mcp-eval.yaml      # job: this task + MCP
+  <task>-<harness>-<model>-skill-eval.yaml    # job: this task + skill
 ```
 
 ## task.toml snippet
 
+Token passthrough only. No `[[environment.mcp_servers]]` block.
+
 ```toml
 [environment.env]
 APIFY_TOKEN = "${APIFY_TOKEN}"        # required; errors if unset on host
-
-[[environment.mcp_servers]]
-name = "apify"
-transport = "stdio"
-command = "/usr/local/bin/apify-mcp-proxy"
-args = []
 ```
+
+## Job config: pick the tool variant
+
+MCP variant:
+
+```yaml
+agents:
+  - name: opencode
+    model_name: openrouter/deepseek/deepseek-chat-v3.1
+    mcp_servers:
+      - name: apify
+        transport: stdio
+        command: /usr/local/bin/apify-mcp-proxy
+        args: []
+```
+
+Skill variant (Harbor uploads the host dir into `/harbor/skills/<name>/` at trial start, then copies into each harness's skill dir: `~/.claude/skills/`, `~/.config/opencode/skills/`, `$HOME/.agents/skills/` for claude-code, opencode, codex respectively):
+
+```yaml
+agents:
+  - name: opencode
+    model_name: openrouter/deepseek/deepseek-chat-v3.1
+    skills:
+      - skills/apify-api          # host path, relative to repo root
+```
+
+Harbor merges `task.config.environment.mcp_servers` with `agent.mcp_servers` by name (last wins). There's no way to disable a task-level MCP from the yaml, which is why the task no longer declares one. See `src/harbor/trial/trial.py:641`.
 
 ## Wrapper template
 
@@ -60,7 +90,7 @@ The `sed` is not cosmetic. `mcp-remote` logs the raw `Authorization` header to s
 
 ## Verifier design rule
 
-**The expected answer must require an actual MCP tool call**, not a name the agent can guess from the prompt. We tried a "list connected MCP names → /app/mcps.txt" task and the agent passed by writing `apify\n` from the init message alone, with `connected: []`. Use a stable opaque value the API returns (e.g., `moJRLRc85AitArpNN` for `apify/web-scraper`).
+**The expected answer must require an actual tool call**, not a name the agent can guess from the prompt. We tried a "list connected MCP names → /app/mcps.txt" task and the agent passed by writing `apify\n` from the init message alone, with `connected: []`. Use a stable opaque value the API returns (e.g., `moJRLRc85AitArpNN` for `apify/web-scraper`).
 
 ## Verifier pattern (Reward Kit)
 
@@ -96,12 +126,14 @@ def actor_id_matches(workspace: Path) -> bool:
 ## Adapt for another vendor
 
 1. Copy `tasks/apify-fetch-actor-id/` to `tasks/<vendor>-<task>/`.
-2. In `apify-mcp-proxy.sh`: change the URL, the env var name, and the redaction regex.
-3. In `task.toml`: rename the MCP, swap the env var.
+2. In `environment/<vendor>-mcp-proxy.sh`: change the URL, the env var name, and the redaction regex.
+3. In `task.toml`: swap the env var (no MCP block).
 4. In `.env.example` + `.env`: add the new token.
-5. Rewrite `instruction.md` and `test_outputs.py` for the new vendor.
+5. Rewrite `instruction.md` (keep it tool-agnostic) and `tests/check.py` for the new vendor.
+6. Add a job config under `configs/` declaring `mcp_servers:` and/or `skills:` for the new vendor.
 
-## Two existing tasks
+## Existing tasks
 
-- `tasks/apify-fetch-actor-id/` - real MCP tool call, not gameable. ~$0.21/run on haiku.
-- `tasks/apify-mcp-connected/` - connection smoke, gameable (kept as a cheap canary).
+- `tasks/apify-fetch-actor-id/` - real Apify call, not gameable. MCP + skill variants both wired.
+- `tasks/apify-scrape-page/` - runs an Actor and reads its dataset. MCP + skill variants both wired.
+- `tasks/apify-mcp-connected/` - connection smoke, gameable. MCP-only (no skill equivalent makes sense).

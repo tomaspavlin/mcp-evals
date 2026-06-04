@@ -14,9 +14,3 @@ storage_mb = 10240
 
 [environment.env]
 APIFY_TOKEN = "${APIFY_TOKEN}"
-
-[[environment.mcp_servers]]
-name = "apify"
-transport = "stdio"
-command = "/usr/local/bin/apify-mcp-proxy"
-args = []

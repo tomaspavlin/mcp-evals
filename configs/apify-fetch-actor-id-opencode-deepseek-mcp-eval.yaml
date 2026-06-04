@@ -1,12 +1,12 @@
-job_name: apify-scrape-page-haiku-smoketest
+job_name: apify-fetch-actor-id-opencode-deepseek-mcp-eval
 n_concurrent_trials: 1
 
 tasks:
-  - path: tasks/apify-scrape-page
+  - path: tasks/apify-fetch-actor-id
 
 agents:
-  - name: claude-code
-    model_name: anthropic/claude-haiku-4.5
+  - name: opencode
+    model_name: openrouter/deepseek/deepseek-chat-v3.1
     mcp_servers:
       - name: apify
         transport: stdio
