@@ -1,0 +1,20 @@
+[project]
+name = "mcp-evals"
+version = "0.1.0"
+description = "Evaluate MCP servers and compare them with CLI/API/skill alternatives, built on Harbor."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "harbor>=0.13.0",
+    "pydantic>=2.11.7",
+    "typer>=0.16.0",
+    "pyyaml>=6.0.2",
+    "python-dotenv>=1.1.1",
+]
+
+[project.scripts]
+mcp-evals = "mcp_evals.cli.main:app"
+
+[build-system]
+requires = ["uv_build>=0.8.4,<0.9.0"]
+build-backend = "uv_build"

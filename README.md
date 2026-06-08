@@ -12,10 +12,13 @@ What this project is: see `AGENTS.md`.
 ## Install
 
 ```bash
-pipx install harbor && pipx inject harbor daytona
+uv sync                                  # creates .venv, installs harbor + mcp-evals
+pipx inject harbor daytona               # optional: for cloud sandbox path
 ```
 
-Verify: `harbor --version` and `harbor datasets list`.
+Verify: `uv run mcp-evals run --help` and `uv run harbor --version`.
+
+`harbor` is also available as a standalone tool (`pipx install harbor`) if you want to run legacy configs without going through `uv run`.
 
 ## Configure secrets
 
@@ -24,7 +27,7 @@ cp .env.example .env
 # edit .env — at minimum set OPENROUTER_API_KEY (and DAYTONA_API_KEY if using cloud)
 ```
 
-Load env vars before running Harbor:
+`mcp-evals run` auto-loads `.env` from cwd. For raw `harbor run` you still need:
 
 ```bash
 set -a; source .env; set +a
@@ -50,10 +53,10 @@ harbor run -c configs/swebench-haiku-smoketest.yaml -m anthropic/claude-sonnet-4
 ## Running a config
 
 ```bash
-./scripts/run.sh configs/apify-all-haiku-smoketest.yaml
+uv run mcp-evals run -c configs/apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml -y
 ```
 
-Extra flags pass through, e.g. `./scripts/run.sh configs/<name>.yaml --env daytona`.
+See `configs/` for the format and `uv run mcp-evals run --help` for flags.
 
 ## Viewing results
 

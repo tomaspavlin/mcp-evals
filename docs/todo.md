@@ -14,6 +14,14 @@ Codex CLI tries `wss://openrouter.ai/api/v1/responses` first; OpenRouter doesn't
 
 No clean fix without either real OpenAI auth (bypass OpenRouter) or OpenRouter adding ws Responses support. Document and ignore for now.
 
+## Shared docker base image for MCP proxies
+
+Today each apify task duplicates `apify-mcp-proxy.sh` and re-installs `mcp-remote` in its Dockerfile (`tasks/apify-*/environment/`). The proxy scripts across the three apify tasks are byte-identical.
+
+Plan: build one `mcp-evals-apify:base` image with node + `mcp-remote` + proxy baked in. Per-task Dockerfiles become a single `FROM mcp-evals-apify:base`. Proxy source moves to `integrations/apify-mcp/proxy.sh` + `integrations/apify-mcp/Dockerfile.base`, built by a `mcp-evals build-integration apify-mcp` subcommand. Same pattern for github / linear / notion MCPs.
+
+Deferred until after `docs/python-cli-migration.md` lands — needs the CLI in place first.
+
 ## Output metrics & visualisation
 
 Data we already collect per trial (in `jobs/<job>/<trial>/`):

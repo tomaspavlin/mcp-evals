@@ -30,13 +30,29 @@ Start with **read-only tool calls** for simplicity. Test production / staging re
 - Agent execution traces (for debugging)
 - Anything else useful as we go
 
+## CLI
+
+`mcp-evals run` is the primary entrypoint. Built on Harbor's `Job` API (`src/mcp_evals/`); custom Typer CLI mirroring harbor flag names + `--integration`. Auto-loads `.env` from cwd.
+
+```bash
+uv run mcp-evals run -c configs/<name>.yaml -y
+```
+
 ## Configs
 
-Job configs live in `configs/*.yaml` (Harbor `JobConfig` schema). Run them with `./scripts/run.sh configs/<name>.yaml` - it sources `.env`, sets `--job-name` to the config basename, and pipes `yes` past the env-confirmation prompt. Extra `harbor run` flags pass through. Naming: `<dataset>-<harness>-<model>-<tool>-<purpose>.yaml` (e.g. `apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml`); `<tool>` is `mcp`, `cli`, `skill`, or `mcpc` (shell-driven MCP via [`@apify/mcpc`](https://github.com/apify/mcpc)) for variants of the same task. `<purpose>` is `eval` for new configs; legacy `-smoketest` configs predate this. Keep secrets in `.env`, never in yaml.
+New schema (our `RunConfig`, ~8 lines): `job_name`, `integration`, `tasks` / `datasets`, `agents` (just `name` + `model_name` + optional `kwargs`). Everything else - environment, mcp_servers, skills, instruction append, `EVAL_VARIANT`, default agent kwargs, concurrency - comes from the named integration + `src/mcp_evals/defaults.py`. See `configs/apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml` for the canonical example.
 
-If the script fails with `FileExistsError` (job dir already exists from a prior run), remove `jobs/<job-name>/` and rerun.
+Naming: `<dataset>-<harness>-<model>-<tool>-<purpose>.yaml`; `<tool>` is `mcp`, `cli`, `skill`, or `mcpc` (shell-driven MCP via [`@apify/mcpc`](https://github.com/apify/mcpc)); `<purpose>` is `eval`. Keep secrets in `.env`, never in yaml.
 
-Direct `harbor run -c …` works but you must `set -a; source .env; set +a` first (no `--env-file` flag). `scripts/run.sh` handles that.
+If a run fails with `FileExistsError` (job dir already exists), remove `jobs/<job-name>/` and rerun.
+
+### Legacy
+
+21 yamls in `configs/` are still harbor `JobConfig` shape and run via `./scripts/run.sh configs/<name>.yaml`. Kept as reference only; migrate before deleting. Background: `docs/python-cli-migration.md`.
+
+## Integrations
+
+`integrations/<name>/` bundles the (MCP servers | skills | instruction append | EVAL_VARIANT) tuple that distinguishes a tool-access strategy for the same underlying task. Files: `integration.yaml` + sibling `instruction.md` (auto-discovered). To add an integration, drop a new directory; reference it via `integration:` in a `RunConfig`. Currently: `apify-mcp`.
 
 ## Dashboard
 
@@ -50,6 +66,7 @@ Read these before proposing architecture:
 - `docs/harbor-task-example.md` - annotated walkthrough of `harbor-cookbook/recipes/mcp-tools/` (the template we fork)
 - `docs/harbor-constraints.md` - discovered facts that constrain design (Python-only runtime, MCP auth header gap, OpenRouter BASE_URL gotcha, cloud sandbox traps)
 - `docs/mcp-task-pattern.md` - how we wire an auth'd remote MCP into a Harbor task (stdio wrapper around `mcp-remote`, token via `[environment.env]`, docker-only for now). Fork-this template.
+- `docs/python-cli-migration.md` - why and how `mcp-evals run` / `src/mcp_evals/` / `integrations/` replaced `harbor run -c …`. Read before changing the CLI, config schema, or integration loader.
 - `docs/todo.md` - open work items: known harness gaps, planned charts, output-metric ideas. Check here before starting new work.
 
 Developer setup (installs, env vars, smoke tests) lives in `README.md`.
