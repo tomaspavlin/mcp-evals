@@ -6,3 +6,5 @@ mcp_servers:
     command: /usr/local/bin/github-mcp-proxy
     args: []
 skills: []
+environment_env:
+  GITHUB_TOKEN: ${GITHUB_TOKEN}

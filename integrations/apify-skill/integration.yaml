@@ -1,3 +1,5 @@
 name: apify-skill
 eval_variant: skill
 mcp_servers: []
+environment_env:
+  APIFY_TOKEN: ${APIFY_TOKEN}

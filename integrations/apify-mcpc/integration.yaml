@@ -2,3 +2,5 @@ name: apify-mcpc
 eval_variant: mcpc
 mcp_servers: []
 skills: []
+environment_env:
+  APIFY_TOKEN: ${APIFY_TOKEN}

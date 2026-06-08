@@ -2,3 +2,5 @@ name: apify-cli
 eval_variant: cli
 mcp_servers: []
 skills: []
+environment_env:
+  APIFY_TOKEN: ${APIFY_TOKEN}

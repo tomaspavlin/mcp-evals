@@ -38,11 +38,24 @@ configs/
 
 ## task.toml snippet
 
-Token passthrough only. No `[[environment.mcp_servers]]` block.
+Only per-task overrides (timeouts, optional verifier env). No `[[environment.mcp_servers]]`, no token passthrough, no resource block - those are hoisted to the integration / `defaults.py`.
 
 ```toml
-[environment.env]
-APIFY_TOKEN = "${APIFY_TOKEN}"        # required; errors if unset on host
+version = "1.0"
+
+[verifier]
+timeout_sec = 60.0
+
+[agent]
+timeout_sec = 180.0
+```
+
+Token passthrough lives on the integration:
+
+```yaml
+# integrations/apify-mcp/integration.yaml
+environment_env:
+  APIFY_TOKEN: ${APIFY_TOKEN}        # resolved against host env at job build time
 ```
 
 ## Integration: pick the tool variant
@@ -60,6 +73,8 @@ mcp_servers:
     command: /usr/local/bin/apify-mcp-proxy
     args: []
 skills: []
+environment_env:
+  APIFY_TOKEN: ${APIFY_TOKEN}
 ```
 
 Skill variant (Harbor uploads the host dir into `/harbor/skills/<name>/` at trial start, then copies into each harness's skill dir: `~/.claude/skills/`, `~/.config/opencode/skills/`, `$HOME/.agents/skills/` for claude-code, opencode, codex respectively):

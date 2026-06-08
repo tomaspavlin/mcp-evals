@@ -16,3 +16,5 @@ class Integration(BaseModel):
     mcp_servers: list[MCPServerConfig] = Field(default_factory=list)
     skills: list[Path] = Field(default_factory=list)
     instruction_path: Path | None = None
+    environment_env: dict[str, str] = Field(default_factory=dict)
+    verifier_env: dict[str, str] = Field(default_factory=dict)

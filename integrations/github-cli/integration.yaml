@@ -2,3 +2,5 @@ name: github-cli
 eval_variant: cli
 mcp_servers: []
 skills: []
+environment_env:
+  GITHUB_TOKEN: ${GITHUB_TOKEN}

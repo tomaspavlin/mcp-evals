@@ -4,6 +4,7 @@ from harbor.models.trial.config import (
     EnvironmentConfig,
     VerifierConfig,
 )
+from harbor.utils.env import resolve_env_vars
 
 from mcp_evals.config import RunConfig
 from mcp_evals.defaults import (
@@ -19,7 +20,8 @@ def build_job_config(run: RunConfig, integration: Integration) -> JobConfig:
 
     Precedence: per-agent kwargs > DEFAULT_AGENT_KWARGS for agent kwargs;
     RunConfig fields > defaults for everything else. Integration owns
-    mcp_servers / skills / instruction append / EVAL_VARIANT.
+    mcp_servers / skills / instruction append / EVAL_VARIANT and the
+    env-var passthrough hoisted out of per-task task.toml.
     """
     if integration.name != run.integration:
         raise ValueError(
@@ -42,6 +44,12 @@ def build_job_config(run: RunConfig, integration: Integration) -> JobConfig:
         [integration.instruction_path] if integration.instruction_path else []
     )
 
+    # Harbor's job-level env is not template-resolved (only task-level is, via
+    # base.py:_maybe_resolve_task_env), so resolve `${VAR}` here against the
+    # host environment before injecting.
+    environment_env = resolve_env_vars(integration.environment_env)
+    verifier_env = resolve_env_vars(integration.verifier_env)
+
     kwargs = {}
     if run.n_attempts is not None:
         kwargs["n_attempts"] = run.n_attempts
@@ -52,8 +60,10 @@ def build_job_config(run: RunConfig, integration: Integration) -> JobConfig:
         tasks=run.tasks,
         datasets=run.datasets,
         agents=agents,
-        environment=EnvironmentConfig(**DEFAULT_ENVIRONMENT),
-        verifier=VerifierConfig(env={"EVAL_VARIANT": integration.eval_variant}),
+        environment=EnvironmentConfig(env=environment_env, **DEFAULT_ENVIRONMENT),
+        verifier=VerifierConfig(
+            env={"EVAL_VARIANT": integration.eval_variant, **verifier_env}
+        ),
         extra_instruction_paths=extra_instruction_paths,
         **kwargs,
     )
