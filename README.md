@@ -46,13 +46,21 @@ Real LLM via OpenRouter (cents):
 harbor run -t hello-world/hello-world -a claude-code -m anthropic/claude-haiku-4.5 --env daytona
 ```
 
-## Running a config
+## Running
 
+From a config:
 ```bash
 uv run mcp-evals run -c configs/apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml -y
 ```
 
-See `configs/` for the format and `uv run mcp-evals run --help` for flags.
+Ad-hoc via flags (no config file needed):
+```bash
+uv run mcp-evals run --integration apify-mcp -a oracle -t tasks/apify-fetch-actor-id -y
+uv run mcp-evals run --integration apify-mcp -a oracle \
+  --dataset-path tasks --task-name 'apify-*' -y
+```
+
+See `configs/` for the schema and `uv run mcp-evals run --help` for all flags.
 
 ## Viewing results
 

@@ -53,9 +53,10 @@ def build_job_config(run: RunConfig, integration: Integration) -> JobConfig:
     kwargs = {}
     if run.n_attempts is not None:
         kwargs["n_attempts"] = run.n_attempts
+    if run.job_name is not None:
+        kwargs["job_name"] = run.job_name
 
     return JobConfig(
-        job_name=run.job_name,
         n_concurrent_trials=run.n_concurrent_trials or DEFAULT_N_CONCURRENT_TRIALS,
         tasks=run.tasks,
         datasets=run.datasets,

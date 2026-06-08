@@ -34,9 +34,21 @@ Start with **read-only tool calls** for simplicity. Test production / staging re
 
 `mcp-evals run` is the primary entrypoint. Built on Harbor's `Job` API (`src/mcp_evals/`); custom Typer CLI mirroring harbor flag names + `--integration`. Auto-loads `.env` from cwd.
 
+From a config:
 ```bash
 uv run mcp-evals run -c configs/<name>.yaml -y
 ```
+
+When the user asks you to run a test, **prefer flag-driven mode over writing a config file** — fewer tokens, no temp yamls to clean up. If a config file is genuinely needed, use the new `RunConfig` schema (`integration:` + `tasks`/`datasets` + `agents`), never the old harbor `JobConfig` shape.
+
+Ad-hoc via flags (no config file):
+```bash
+uv run mcp-evals run --integration apify-mcp -a oracle -t tasks/apify-fetch-actor-id -y
+uv run mcp-evals run --integration apify-mcp -a oracle \
+  --dataset-path tasks --task-name 'apify-*' --exclude-task-name apify-mcp-connected -y
+```
+
+Flags: `--integration NAME`, `-a/--agent NAME`, `-m/--model MODEL` (omit for oracle), `-t/--task PATH` (repeatable), `-p/--dataset-path PATH`, `--task-name GLOB` (repeatable), `--exclude-task-name GLOB` (repeatable), `--job-name`, `-k/--n-attempts`, `-n/--n-concurrent`, `--env-file`, `-y`. Each flag overrides whatever's in `-c`.
 
 ## Configs
 
