@@ -11,6 +11,10 @@ from typer import Option
 
 from mcp_evals.config import RunAgentConfig, RunConfig, load_run_config
 from mcp_evals.integrations.loader import load_integration
+from mcp_evals.integrations.materialize import (
+    discover_dataset_task_paths,
+    materialize_for_tasks,
+)
 from mcp_evals.job_builder import build_job_config
 
 console = Console()
@@ -159,6 +163,14 @@ def run_command(
         run.job_name = config_path.stem
 
     integ = load_integration(run.integration)
+
+    if integ.environment_dir is not None:
+        task_paths = [tc.path for tc in run.tasks if tc.path is not None]
+        for ds in run.datasets:
+            if ds.path is not None:
+                task_paths.extend(discover_dataset_task_paths(ds.path))
+        materialize_for_tasks(integ, task_paths)
+
     job_config = build_job_config(run, integ)
 
     asyncio.run(_execute(job_config, yes=yes))

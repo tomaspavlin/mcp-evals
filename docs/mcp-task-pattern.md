@@ -16,25 +16,26 @@ Harbor's `MCPServerConfig` accepts `name | transport | url | command | args`. **
 
 ```
 tasks/<name>/
-  task.toml                  # env passthrough only; no MCP block
+  task.toml                  # per-task timeouts; no MCP block, no env block
   instruction.md             # task only - no mention of tool variant
-  environment/
-    Dockerfile               # node:22-bookworm + `npm install -g mcp-remote apify-cli`
-    apify-mcp-proxy.sh       # the wrapper (see template below)
+  environment/               # gitignored; materialized from the integration on `mcp-evals run`
   tests/
     test.sh, check.py        # Reward Kit verifier (see below)
   solution/solve.sh
 
-skills/<name>/
-  SKILL.md                   # Anthropic skill format: frontmatter + body
-
 integrations/<vendor>-<variant>/
-  integration.yaml           # name, eval_variant, mcp_servers, skills
+  integration.yaml           # name, eval_variant, mcp_servers, skills, environment_env
   instruction.md             # auto-discovered, appended via extra_instruction_paths
+  environment/               # auto-discovered Dockerfile + proxy script; copied into the task at run time
+    Dockerfile               # node:22-bookworm + `npm install -g mcp-remote apify-cli`
+    apify-mcp-proxy.sh       # the wrapper (see template below)
+  skills/<name>/SKILL.md     # optional, auto-discovered
 
 configs/
   <task>-<harness>-<model>-<variant>-eval.yaml   # RunConfig: integration: <vendor>-<variant>
 ```
+
+The materialize step (`mcp-evals run` does it automatically; `mcp-evals materialize` exposes it standalone) copies `integrations/<integration>/environment/` into each target task's `environment/` dir before harbor sees the task. Per-task env dirs are gitignored - the integration owns the source of truth.
 
 ## task.toml snippet
 
@@ -146,13 +147,11 @@ def actor_id_matches(workspace: Path) -> bool:
 
 ## Adapt for another vendor
 
-1. Copy `tasks/apify-fetch-actor-id/` to `tasks/<vendor>-<task>/`.
-2. In `environment/<vendor>-mcp-proxy.sh`: change the URL, the env var name, and the redaction regex.
-3. In `task.toml`: swap the env var (no MCP block).
-4. In `.env.example` + `.env`: add the new token.
-5. Rewrite `instruction.md` (task only, no tool wording) and `tests/check.py` for the new vendor.
-6. Create `integrations/<vendor>-<variant>/` with `integration.yaml` (mcp_servers and/or skills, `eval_variant`) and `instruction.md` (tool wording).
-7. Add a RunConfig under `configs/` with `integration: <vendor>-<variant>` and `tasks: - path: tasks/<vendor>-<task>`.
+1. Copy `tasks/apify-fetch-actor-id/` to `tasks/<vendor>-<task>/` (drop the `environment/` dir - it's now owned by the integration).
+2. Rewrite `instruction.md` (task only, no tool wording) and `tests/check.py` for the new vendor.
+3. In `.env.example` + `.env`: add the new token.
+4. Create `integrations/<vendor>-<variant>/` with `integration.yaml` (`mcp_servers` and/or `skills`, `eval_variant`, `environment_env`), `instruction.md` (tool wording), and `environment/` (Dockerfile + proxy script). In the proxy script change the URL, env var name, and redaction regex.
+5. Add a RunConfig under `configs/` with `integration: <vendor>-<variant>` and `tasks: - path: tasks/<vendor>-<task>`.
 
 ## Existing tasks
 

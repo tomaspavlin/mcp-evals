@@ -24,6 +24,10 @@ def load_integration(name: str, root: Path = INTEGRATIONS_DIR) -> Integration:
     if instruction_md.is_file():
         integration.instruction_path = instruction_md
 
+    environment_dir = integration_dir / "environment"
+    if environment_dir.is_dir():
+        integration.environment_dir = environment_dir
+
     skills_dir = integration_dir / "skills"
     if skills_dir.is_dir():
         for skill in sorted(skills_dir.iterdir()):

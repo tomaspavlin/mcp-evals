@@ -40,3 +40,7 @@ Thumbs.db
 
 jobs/
 *.local.md
+
+# Materialized task environment dirs (populated from integrations/<name>/environment/
+# by `mcp-evals materialize` or the run pre-step).
+tasks/*/environment/
