@@ -68,8 +68,7 @@ Skill variant (Harbor uploads the host dir into `/harbor/skills/<name>/` at tria
 name: apify-skill
 eval_variant: skill
 mcp_servers: []
-skills:
-  - skills/apify-ultimate-scraper   # host path, relative to repo root
+# skills/<name>/SKILL.md under the integration dir is auto-discovered
 ```
 
 `job_builder` fans `mcp_servers` and `skills` into every agent in the RunConfig and appends the integration's `instruction.md` via the job-level `extra_instruction_paths` field. Each instruction file is appended to the task's `instruction.md` with `\n\n` separators (`src/harbor/models/task/task.py:181`).

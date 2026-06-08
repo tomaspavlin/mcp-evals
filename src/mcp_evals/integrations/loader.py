@@ -24,4 +24,10 @@ def load_integration(name: str, root: Path = INTEGRATIONS_DIR) -> Integration:
     if instruction_md.is_file():
         integration.instruction_path = instruction_md
 
+    skills_dir = integration_dir / "skills"
+    if skills_dir.is_dir():
+        for skill in sorted(skills_dir.iterdir()):
+            if skill.is_dir() and (skill / "SKILL.md").is_file() and skill not in integration.skills:
+                integration.skills.append(skill)
+
     return integration

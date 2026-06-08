@@ -1,5 +1,3 @@
 name: apify-skill
 eval_variant: skill
 mcp_servers: []
-skills:
-  - skills/apify-ultimate-scraper

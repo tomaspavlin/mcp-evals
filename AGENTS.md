@@ -48,7 +48,7 @@ If a run fails with `FileExistsError` (job dir already exists), remove `jobs/<jo
 
 ## Integrations
 
-`integrations/<name>/` bundles the (MCP servers | skills | instruction append | EVAL_VARIANT) tuple that distinguishes a tool-access strategy for the same underlying task. Files: `integration.yaml` + sibling `instruction.md` (auto-discovered). To add an integration, drop a new directory; reference it via `integration:` in a `RunConfig`. Currently: `apify-mcp`.
+`integrations/<name>/` bundles the (MCP servers | skills | instruction append | EVAL_VARIANT) tuple that distinguishes a tool-access strategy for the same underlying task. Files: `integration.yaml` + sibling `instruction.md` + optional `skills/<skill-name>/SKILL.md` (all auto-discovered by the loader). To add an integration, drop a new directory; reference it via `integration:` in a `RunConfig`.
 
 ## Dashboard
 
@@ -62,7 +62,6 @@ Read these before proposing architecture:
 - `docs/harbor-task-example.md` - annotated walkthrough of `harbor-cookbook/recipes/mcp-tools/` (the template we fork)
 - `docs/harbor-constraints.md` - discovered facts that constrain design (Python-only runtime, MCP auth header gap, OpenRouter BASE_URL gotcha, cloud sandbox traps)
 - `docs/mcp-task-pattern.md` - how we wire an auth'd remote MCP into a Harbor task (stdio wrapper around `mcp-remote`, token via `[environment.env]`, docker-only for now). Fork-this template.
-- `docs/python-cli-migration.md` - why and how `mcp-evals run` / `src/mcp_evals/` / `integrations/` replaced `harbor run -c …`. Read before changing the CLI, config schema, or integration loader.
 - `docs/todo.md` - open work items: known harness gaps, planned charts, output-metric ideas. Check here before starting new work.
 
 Developer setup (installs, env vars, smoke tests) lives in `README.md`.
