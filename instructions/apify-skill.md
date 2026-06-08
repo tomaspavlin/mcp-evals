@@ -1,1 +1,0 @@
-The `apify-ultimate-scraper` skill is available to you. Use it to complete the task above.

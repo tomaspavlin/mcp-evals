@@ -46,10 +46,6 @@ Real LLM via OpenRouter (cents):
 harbor run -t hello-world/hello-world -a claude-code -m anthropic/claude-haiku-4.5 --env daytona
 ```
 
-```bash
-harbor run -c configs/swebench-haiku-smoketest.yaml -m anthropic/claude-sonnet-4.6 --job-name swebench-sonnet-smoketest
-```
-
 ## Running a config
 
 ```bash

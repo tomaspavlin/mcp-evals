@@ -1,10 +1,9 @@
-job_name: apify-all-opencode-deepseek-mcpc-eval
-integration: apify-mcpc
+job_name: apify-all-opencode-deepseek-mcp-eval
+integration: apify-mcp
 n_concurrent_trials: 2
 datasets:
   - path: tasks
     task_names: ["apify-*"]
-    exclude_task_names: ["apify-mcp-connected"]
 agents:
   - name: opencode
     model_name: openrouter/deepseek/deepseek-chat-v3.1

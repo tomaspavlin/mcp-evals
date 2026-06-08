@@ -1,0 +1,4 @@
+name: apify-mcpc
+eval_variant: mcpc
+mcp_servers: []
+skills: []

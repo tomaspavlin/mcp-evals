@@ -42,6 +42,10 @@ def build_job_config(run: RunConfig, integration: Integration) -> JobConfig:
         [integration.instruction_path] if integration.instruction_path else []
     )
 
+    kwargs = {}
+    if run.n_attempts is not None:
+        kwargs["n_attempts"] = run.n_attempts
+
     return JobConfig(
         job_name=run.job_name,
         n_concurrent_trials=run.n_concurrent_trials or DEFAULT_N_CONCURRENT_TRIALS,
@@ -51,4 +55,5 @@ def build_job_config(run: RunConfig, integration: Integration) -> JobConfig:
         environment=EnvironmentConfig(**DEFAULT_ENVIRONMENT),
         verifier=VerifierConfig(env={"EVAL_VARIANT": integration.eval_variant}),
         extra_instruction_paths=extra_instruction_paths,
+        **kwargs,
     )

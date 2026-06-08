@@ -1,24 +1,7 @@
 job_name: github-pr-info-opencode-deepseek-cli-eval
-n_concurrent_trials: 1
-
+integration: github-cli
 tasks:
   - path: tasks/github-pr-info
-
-extra_instruction_paths:
-  - instructions/github-cli.md
-
 agents:
   - name: opencode
     model_name: openrouter/deepseek/deepseek-chat-v3.1
-    kwargs:
-      max_budget_usd: 1.50
-      max_turns: 20
-
-environment:
-  # docker (local) until GitHub Copilot MCP hosts are added to Daytona's outbound allowlist.
-  # See docs/harbor-constraints.md "Daytona outbound network is allowlisted by tier".
-  type: docker
-
-verifier:
-  env:
-    EVAL_VARIANT: cli

@@ -28,13 +28,12 @@ tasks/<name>/
 skills/<name>/
   SKILL.md                   # Anthropic skill format: frontmatter + body
 
-instructions/
-  <vendor>-mcp.md            # snippet appended via extra_instruction_paths
-  <vendor>-skill.md          # snippet appended via extra_instruction_paths
+integrations/<vendor>-<variant>/
+  integration.yaml           # name, eval_variant, mcp_servers, skills
+  instruction.md             # auto-discovered, appended via extra_instruction_paths
 
 configs/
-  <task>-<harness>-<model>-mcp-eval.yaml      # job: this task + MCP
-  <task>-<harness>-<model>-skill-eval.yaml    # job: this task + skill
+  <task>-<harness>-<model>-<variant>-eval.yaml   # RunConfig: integration: <vendor>-<variant>
 ```
 
 ## task.toml snippet
@@ -46,40 +45,34 @@ Token passthrough only. No `[[environment.mcp_servers]]` block.
 APIFY_TOKEN = "${APIFY_TOKEN}"        # required; errors if unset on host
 ```
 
-## Job config: pick the tool variant
+## Integration: pick the tool variant
 
-The job yaml decides MCP vs skill and points `extra_instruction_paths` at the matching snippet so the agent gets told which tool to use. `instruction.md` itself stays tool-agnostic.
+The integration decides MCP vs CLI vs skill. `instruction.md` in the task stays tool-agnostic; the integration's `instruction.md` tells the agent which tool to use. The RunConfig references the integration by name.
 
-MCP variant:
+MCP variant (`integrations/apify-mcp/integration.yaml`):
 
 ```yaml
-extra_instruction_paths:
-  - instructions/apify-mcp.md
-
-agents:
-  - name: opencode
-    model_name: openrouter/deepseek/deepseek-chat-v3.1
-    mcp_servers:
-      - name: apify
-        transport: stdio
-        command: /usr/local/bin/apify-mcp-proxy
-        args: []
+name: apify-mcp
+eval_variant: mcp
+mcp_servers:
+  - name: apify
+    transport: stdio
+    command: /usr/local/bin/apify-mcp-proxy
+    args: []
+skills: []
 ```
 
 Skill variant (Harbor uploads the host dir into `/harbor/skills/<name>/` at trial start, then copies into each harness's skill dir: `~/.claude/skills/`, `~/.config/opencode/skills/`, `$HOME/.agents/skills/` for claude-code, opencode, codex respectively):
 
 ```yaml
-extra_instruction_paths:
-  - instructions/apify-skill.md
-
-agents:
-  - name: opencode
-    model_name: openrouter/deepseek/deepseek-chat-v3.1
-    skills:
-      - skills/apify-ultimate-scraper   # host path, relative to repo root
+name: apify-skill
+eval_variant: skill
+mcp_servers: []
+skills:
+  - skills/apify-ultimate-scraper   # host path, relative to repo root
 ```
 
-`extra_instruction_paths` is a job-level field. Each file's contents get appended to the task's `instruction.md` with `\n\n` separators (`src/harbor/models/task/task.py:181`).
+`job_builder` fans `mcp_servers` and `skills` into every agent in the RunConfig and appends the integration's `instruction.md` via the job-level `extra_instruction_paths` field. Each instruction file is appended to the task's `instruction.md` with `\n\n` separators (`src/harbor/models/task/task.py:181`).
 
 Harbor merges `task.config.environment.mcp_servers` with `agent.mcp_servers` by name (last wins). There's no way to disable a task-level MCP from the yaml, which is why the task no longer declares one. See `src/harbor/trial/trial.py:641`.
 
@@ -144,8 +137,8 @@ def actor_id_matches(workspace: Path) -> bool:
 3. In `task.toml`: swap the env var (no MCP block).
 4. In `.env.example` + `.env`: add the new token.
 5. Rewrite `instruction.md` (task only, no tool wording) and `tests/check.py` for the new vendor.
-6. Add `instructions/<vendor>-mcp.md` and/or `instructions/<vendor>-skill.md` snippets.
-7. Add a job config under `configs/` declaring `mcp_servers:` and/or `skills:` plus the matching `extra_instruction_paths:` entry.
+6. Create `integrations/<vendor>-<variant>/` with `integration.yaml` (mcp_servers and/or skills, `eval_variant`) and `instruction.md` (tool wording).
+7. Add a RunConfig under `configs/` with `integration: <vendor>-<variant>` and `tasks: - path: tasks/<vendor>-<task>`.
 
 ## Existing tasks
 

@@ -1,0 +1,8 @@
+name: github-mcp
+eval_variant: mcp
+mcp_servers:
+  - name: github
+    transport: stdio
+    command: /usr/local/bin/github-mcp-proxy
+    args: []
+skills: []

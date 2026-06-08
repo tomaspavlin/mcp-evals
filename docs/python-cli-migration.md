@@ -1,18 +1,10 @@
-# Python CLI migration
+# Python CLI design
 
-Move from `harbor run -c configs/*.yaml` to a thin Python CLI built on Harbor's `Job` API. Unlocks codex agent overrides, shared environment defaults, and an `integrations/` abstraction that bundles the (MCP servers | skills | instruction append | EVAL_VARIANT) tuple.
+`mcp-evals run` (in `src/mcp_evals/`) is a thin Python CLI built on Harbor's `Job` API. It expands our own `RunConfig` schema + a named `Integration` + Python defaults into a harbor `JobConfig`, then calls `await Job.create(config); await job.run()`. Replaces the previous `harbor run -c configs/*.yaml` flow.
 
-## Why
+## Why a custom layer
 
-Today every yaml in `configs/` repeats `environment.type`, `n_concurrent_trials`, agent kwargs, and spreads the variant signal across three places (`extra_instruction_paths`, `agents[].mcp_servers`, `verifier.env.EVAL_VARIANT`). Python gives us composition, hooks, and `BaseAgent` subclasses; yaml stays for data (integrations, base config) so it's still grep-able.
-
-## Scope (this migration)
-
-- New `src/mcp_evals/` package + `pyproject.toml`, console script `mcp-evals run`.
-- One integration directory: `integrations/apify-mcp/` (yaml + instruction).
-- Migrate one config: `apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml` (single task + single agent → fastest end-to-end test).
-- Leave the other 21 yamls and `scripts/run.sh` as legacy/reference. To be removed later.
-- **Out of scope**: codex override (planned), other integrations, sweeps, proxy script centralization (see `docs/todo.md`).
+Harbor's `JobConfig` yaml repeats `environment.type`, `n_concurrent_trials`, agent kwargs in every file and spreads the tool-variant signal across three places (`extra_instruction_paths`, `agents[].mcp_servers`, `verifier.env.EVAL_VARIANT`). The Python layer gives us composition (the `integration:` field), hooks, and a hook-point for `BaseAgent` subclasses (e.g. future codex override). Yaml stays for data so configs remain grep-able.
 
 ## Decisions
 
@@ -30,37 +22,24 @@ Today every yaml in `configs/` repeats `environment.type`, `n_concurrent_trials`
 
 ```
 mcp-evals/
-├── pyproject.toml              # NEW — src layout, uv_build, [project.scripts] mcp-evals = "mcp_evals.cli.main:app"
+├── pyproject.toml              # src layout, uv_build, [project.scripts] mcp-evals = "mcp_evals.cli.main:app"
 ├── src/mcp_evals/
-│   ├── __init__.py
-│   ├── cli/
-│   │   ├── __init__.py
-│   │   ├── main.py             # Typer app
-│   │   └── run.py              # `mcp-evals run …`
-│   ├── integrations/
-│   │   ├── __init__.py
-│   │   ├── model.py            # Integration Pydantic model
-│   │   └── loader.py           # load_integration(name) -> Integration
-│   ├── job_builder.py          # build_job_config(integration, base, overrides) -> JobConfig
-│   └── defaults.py             # DEFAULT_ENVIRONMENT, DEFAULT_AGENT_KWARGS, N_CONCURRENT
-├── integrations/               # NEW — one directory per integration
-│   └── apify-mcp/
-│       ├── integration.yaml    # name, eval_variant, mcp_servers, skills
-│       └── instruction.md      # appended to every task's instruction
-├── configs/                    # existing yamls kept as reference
-├── instructions/, tasks/, skills/, apps/, docs/, scripts/, jobs/   # unchanged
-└── scripts/run.sh              # KEEP for legacy
+│   ├── cli/main.py             # Typer app
+│   ├── cli/run.py              # `mcp-evals run …`
+│   ├── integrations/model.py   # Integration Pydantic model
+│   ├── integrations/loader.py  # load_integration(name) -> Integration
+│   ├── config.py               # RunConfig schema + load_run_config()
+│   ├── job_builder.py          # build_job_config(run, integration) -> JobConfig
+│   └── defaults.py             # DEFAULT_ENVIRONMENT, DEFAULT_AGENT_KWARGS, DEFAULT_N_CONCURRENT_TRIALS
+├── integrations/<name>/        # one directory per integration
+│   ├── integration.yaml        # name, eval_variant, mcp_servers, skills
+│   └── instruction.md          # appended to every task's instruction (auto-discovered)
+├── configs/<name>.yaml         # RunConfig schema
 ```
 
 `agents/` subpackage will be added under `src/mcp_evals/` when the codex override lands. Reference: `harbor/examples/agents/marker_agent.py` for the `BaseAgent` subclass pattern.
 
-## Integration directory shape
-
-```
-integrations/apify-mcp/
-├── integration.yaml
-└── instruction.md       # auto-discovered alongside integration.yaml
-```
+## Integration shape
 
 ```yaml
 # integrations/apify-mcp/integration.yaml
@@ -69,21 +48,19 @@ eval_variant: mcp
 mcp_servers:
   - name: apify
     transport: stdio
-    command: /usr/local/bin/apify-mcp-proxy
+    command: /usr/local/bin/apify-mcp-proxy   # path inside the container
     args: []
 skills: []
 ```
 
 The `Integration` model fans `mcp_servers` and `skills` into every agent at job-build time, appends `instruction.md` via `extra_instruction_paths`, and sets `verifier.env["EVAL_VARIANT"]`.
 
-Note on `command: /usr/local/bin/apify-mcp-proxy` — that path is **inside the container**. Each task's `environment/Dockerfile` `COPY`s the proxy script there. Today the script is duplicated across each task's `environment/` dir; centralizing via a shared docker base image is feasible but deferred (see `docs/todo.md`).
+Note on `command: /usr/local/bin/apify-mcp-proxy` — that path resolves **inside the container**. Each task's `environment/Dockerfile` `COPY`s the proxy script there. Today the script is duplicated across each task's `environment/`; centralizing via a shared docker base image is feasible but deferred (see `docs/todo.md`).
 
-## Config shape (our schema, not harbor's JobConfig)
-
-`-c` now points at our own thin schema. Loader expands it into a harbor `JobConfig` at runtime by merging the named integration + `defaults.py`.
+## RunConfig shape
 
 ```yaml
-# configs/apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml (new shape)
+# configs/apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml
 job_name: apify-fetch-actor-id-opencode-deepseek-mcp-eval
 integration: apify-mcp
 tasks:
@@ -93,17 +70,13 @@ agents:
     model_name: openrouter/deepseek/deepseek-chat-v3.1
 ```
 
-Everything else (`n_concurrent_trials`, `environment`, agent `kwargs`, `mcp_servers`, `extra_instruction_paths`, `EVAL_VARIANT`) comes from the integration + defaults. Per-config overrides allowed via `agents[].kwargs`, top-level `n_concurrent_trials`, etc.
+Everything else (`n_concurrent_trials`, `environment`, agent `kwargs`, `mcp_servers`, `extra_instruction_paths`, `EVAL_VARIANT`) comes from the integration + defaults. Per-config overrides allowed via `agents[].kwargs`, top-level `n_concurrent_trials`, `n_attempts`.
 
-## CLI surface
+## CLI
 
 ```
 mcp-evals run -c configs/<name>.yaml \
               [--integration NAME] [--job-name NAME] [-y] [--n-attempts N] [--n-concurrent N] [--env-file PATH]
 ```
 
-`--integration` overrides what's in the yaml. `-c` is optional once defaults + flags cover the common case — for now most runs pass it. Same `.env` loading and `-y` auto-confirm semantics as `scripts/run.sh` today.
-
-## Migration target
-
-`configs/apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml` — single task, single agent → fast end-to-end smoke. After migration, `mcp-evals run -c configs/apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml` should produce the same `JobConfig` as the legacy yaml did via `harbor run`.
+`--integration` overrides what's in the yaml. `.env` is auto-loaded from cwd. `-y` skips the host-env-access confirmation.

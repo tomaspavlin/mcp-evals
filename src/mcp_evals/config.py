@@ -22,6 +22,7 @@ class RunConfig(BaseModel):
     job_name: str | None = None
     integration: str
     n_concurrent_trials: int | None = None
+    n_attempts: int | None = None
     tasks: list[TaskConfig] = Field(default_factory=list)
     datasets: list[DatasetConfig] = Field(default_factory=list)
     agents: list[RunAgentConfig]

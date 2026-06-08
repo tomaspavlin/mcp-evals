@@ -46,10 +46,6 @@ Naming: `<dataset>-<harness>-<model>-<tool>-<purpose>.yaml`; `<tool>` is `mcp`, 
 
 If a run fails with `FileExistsError` (job dir already exists), remove `jobs/<job-name>/` and rerun.
 
-### Legacy
-
-21 yamls in `configs/` are still harbor `JobConfig` shape and run via `./scripts/run.sh configs/<name>.yaml`. Kept as reference only; migrate before deleting. Background: `docs/python-cli-migration.md`.
-
 ## Integrations
 
 `integrations/<name>/` bundles the (MCP servers | skills | instruction append | EVAL_VARIANT) tuple that distinguishes a tool-access strategy for the same underlying task. Files: `integration.yaml` + sibling `instruction.md` (auto-discovered). To add an integration, drop a new directory; reference it via `integration:` in a `RunConfig`. Currently: `apify-mcp`.
