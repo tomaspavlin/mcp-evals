@@ -6,4 +6,9 @@ RUN ARCH=$(dpkg --print-architecture) \
  && apt-get update && apt-get install -y --no-install-recommends /tmp/gh.deb \
  && rm /tmp/gh.deb && rm -rf /var/lib/apt/lists/*
 
+RUN npm install -g mcp-remote@0.1.38
+
+COPY github-mcp-proxy.sh /usr/local/bin/github-mcp-proxy
+RUN chmod +x /usr/local/bin/github-mcp-proxy
+
 WORKDIR /app

@@ -17,3 +17,7 @@ GITHUB_TOKEN = "${GITHUB_TOKEN}"
 
 [verifier.env]
 OPENROUTER_API_KEY = "${OPENROUTER_API_KEY}"
+# Rewardkit always sends `reasoning_effort` to the judge; DeepSeek models on
+# OpenRouter expose `reasoning` (not `reasoning_effort`), so litellm raises
+# UnsupportedParamsError. Drop unsupported params instead of erroring.
+LITELLM_DROP_PARAMS = "True"
