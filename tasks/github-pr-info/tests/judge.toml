@@ -1,0 +1,19 @@
+[judge]
+judge = "openrouter/deepseek/deepseek-v4-flash"
+files = ["/app/answer.md"]
+mode = "individual"
+
+[[criterion]]
+name = "title_correct"
+description = "The report states the PR title as 'Gateway: harden OpenResponses file-context escaping' (minor punctuation/whitespace differences are acceptable; meaning must match exactly)."
+type = "binary"
+
+[[criterion]]
+name = "author_correct"
+description = "The report identifies the PR author as joshavant (GitHub login) or Josh Avant (display name). Either form is acceptable."
+type = "binary"
+
+[[criterion]]
+name = "merged_correct"
+description = "The report clearly states the PR has been merged. Saying only 'closed' is not sufficient."
+type = "binary"
