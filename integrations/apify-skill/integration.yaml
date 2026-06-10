@@ -1,6 +1,9 @@
 name: apify-skill
 mcp_servers: []
-environment_env:
+# Token is set only during setup.sh (apify login persists to ~/.apify/auth.json);
+# kept out of the container env so the agent can't `echo $APIFY_TOKEN` it into
+# the trajectory.
+setup_env:
   APIFY_TOKEN: ${APIFY_TOKEN}
 # skill is just instructions to use the apify CLI, so the expected
 # tool-call channel is the same as apify-cli.

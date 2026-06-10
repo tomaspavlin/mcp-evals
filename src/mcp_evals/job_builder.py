@@ -49,12 +49,14 @@ def build_job_config(run: RunConfig, integration: Integration) -> JobConfig:
     # base.py:_maybe_resolve_task_env), so resolve `${VAR}` here against the
     # host environment before injecting.
     environment_env = resolve_env_vars(integration.environment_env)
+    setup_env = resolve_env_vars(integration.setup_env)
     verifier_env = resolve_env_vars(integration.verifier_env)
 
     set_setup_script(
         integration.setup_script_path.read_text()
         if integration.setup_script_path is not None
-        else None
+        else None,
+        env=setup_env,
     )
 
     kwargs = {}

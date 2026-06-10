@@ -18,4 +18,5 @@ class Integration(BaseModel):
     setup_script_path: Path | None = None
     environment_dir: Path | None = None
     environment_env: dict[str, str] = Field(default_factory=dict)
+    setup_env: dict[str, str] = Field(default_factory=dict)
     verifier_env: dict[str, str] = Field(default_factory=dict)
