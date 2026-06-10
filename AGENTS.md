@@ -62,6 +62,10 @@ If a run fails with `FileExistsError` (job dir already exists), remove `jobs/<jo
 
 `integrations/<name>/` bundles the (MCP servers | skills | instruction append | EVAL_VARIANT) tuple that distinguishes a tool-access strategy for the same underlying task. Files: `integration.yaml` + sibling `instruction.md` + optional `skills/<skill-name>/SKILL.md` (all auto-discovered by the loader). To add an integration, drop a new directory; reference it via `integration:` in a `RunConfig`.
 
+## Harbor patches
+
+`src/mcp_evals/_patches/` holds runtime monkey-patches for harbor upstream gaps (codex MCP env propagation, E2B free-tier sandbox timeout). Prefer upstreaming over patching when feasible.
+
 ## Dashboard
 
 Custom Streamlit app at `apps/dashboard/` for project-specific plots over `jobs/`. Reads via Harbor's `JobScanner` so schema parsing stays in sync. Complements `harbor view jobs`, does not replace it. See `apps/dashboard/README.md` for setup and run instructions.

@@ -8,6 +8,12 @@ Symptom on `apify-fetch-actor-id` with codex: MCP startup fails with `Broken pip
 
 Fix: fork harbor at `../harbor`, extend `_build_register_mcp_servers_command` to emit an `env = { ... }` block from `server.env`. Install harbor from the clone. Upstream PR.
 
+## E2B sandbox timeout hardcoded to 24h (Harbor gap)
+
+Harbor's `E2BEnvironment._create_sandbox` (`harbor/environments/e2b.py:198`) calls `AsyncSandbox.create(timeout=86_400)` with no override. E2B free plan caps sandbox lifetime at 1 h, so creation fails on a free key.
+
+Workaround: `src/mcp_evals/_patches/e2b_timeout.py` monkey-patches `AsyncSandbox.create` to clamp `timeout` to 3600 s. Remove the patch (and its import in `src/mcp_evals/__init__.py`) when harbor exposes a `sandbox_timeout_secs` arg like `modal.py:883` does, or when we move to E2B paid.
+
 ## Codex via OpenRouter: Responses API wss 404 noise
 
 Codex CLI tries `wss://openrouter.ai/api/v1/responses` first; OpenRouter doesn't expose that WebSocket endpoint, so codex logs 5x `404 Not Found` before falling back to HTTP Responses, which succeeds. Cosmetic but spams trial logs.
