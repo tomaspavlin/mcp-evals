@@ -5,14 +5,13 @@ from pydantic import BaseModel, Field
 
 
 class Integration(BaseModel):
-    """Bundles the (MCP servers | skills | instruction append | EVAL_VARIANT)
+    """Bundles the (MCP servers | skills | instruction append | verifier env)
     tuple that distinguishes one tool-access strategy from another for the same
     underlying tasks. Lives at integrations/<name>/integration.yaml with a
     sibling instruction.md.
     """
 
     name: str
-    eval_variant: str
     mcp_servers: list[MCPServerConfig] = Field(default_factory=list)
     skills: list[Path] = Field(default_factory=list)
     instruction_path: Path | None = None

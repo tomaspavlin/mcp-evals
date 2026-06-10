@@ -1,5 +1,8 @@
 name: apify-skill
-eval_variant: skill
 mcp_servers: []
 environment_env:
   APIFY_TOKEN: ${APIFY_TOKEN}
+# skill is just instructions to use the apify CLI, so the expected
+# tool-call channel is the same as apify-cli.
+verifier_env:
+  EXPECTED_CHANNEL: cli

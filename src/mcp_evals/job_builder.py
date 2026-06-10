@@ -20,7 +20,7 @@ def build_job_config(run: RunConfig, integration: Integration) -> JobConfig:
 
     Precedence: per-agent kwargs > DEFAULT_AGENT_KWARGS for agent kwargs;
     RunConfig fields > defaults for everything else. Integration owns
-    mcp_servers / skills / instruction append / EVAL_VARIANT and the
+    mcp_servers / skills / instruction append / verifier env and the
     env-var passthrough hoisted out of per-task task.toml.
     """
     if integration.name != run.integration:
@@ -65,9 +65,7 @@ def build_job_config(run: RunConfig, integration: Integration) -> JobConfig:
             env=environment_env,
             **{**DEFAULT_ENVIRONMENT, **({"type": run.environment_type} if run.environment_type else {})},
         ),
-        verifier=VerifierConfig(
-            env={"EVAL_VARIANT": integration.eval_variant, **verifier_env}
-        ),
+        verifier=VerifierConfig(env=verifier_env),
         extra_instruction_paths=extra_instruction_paths,
         **kwargs,
     )

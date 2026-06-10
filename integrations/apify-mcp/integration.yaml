@@ -1,5 +1,4 @@
 name: apify-mcp
-eval_variant: mcp
 mcp_servers:
   - name: apify
     transport: stdio
@@ -8,3 +7,5 @@ mcp_servers:
 skills: []
 environment_env:
   APIFY_TOKEN: ${APIFY_TOKEN}
+verifier_env:
+  EXPECTED_CHANNEL: mcp

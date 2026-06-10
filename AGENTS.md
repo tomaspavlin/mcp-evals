@@ -52,7 +52,7 @@ Flags: `--integration NAME`, `-a/--agent NAME`, `-m/--model MODEL` (omit for ora
 
 ## Configs
 
-New schema (our `RunConfig`, ~8 lines): `job_name`, `integration`, `tasks` / `datasets`, `agents` (just `name` + `model_name` + optional `kwargs`). Everything else - environment, mcp_servers, skills, instruction append, `EVAL_VARIANT`, default agent kwargs, concurrency - comes from the named integration + `src/mcp_evals/defaults.py`. See `configs/apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml` for the canonical example.
+New schema (our `RunConfig`, ~8 lines): `job_name`, `integration`, `tasks` / `datasets`, `agents` (just `name` + `model_name` + optional `kwargs`). Everything else - environment, mcp_servers, skills, instruction append, verifier env, default agent kwargs, concurrency - comes from the named integration + `src/mcp_evals/defaults.py`. See `configs/apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml` for the canonical example.
 
 Naming: `<dataset>-<harness>-<model>-<tool>-<purpose>.yaml`; `<tool>` is `mcp`, `cli`, `skill`, or `mcpc` (shell-driven MCP via [`@apify/mcpc`](https://github.com/apify/mcpc)); `<purpose>` is `eval`. Keep secrets in `.env`, never in yaml.
 
@@ -60,7 +60,7 @@ If a run fails with `FileExistsError` (job dir already exists), remove `jobs/<jo
 
 ## Integrations
 
-`integrations/<name>/` bundles the (MCP servers | skills | instruction append | EVAL_VARIANT) tuple that distinguishes a tool-access strategy for the same underlying task. Files: `integration.yaml` + sibling `instruction.md` + optional `skills/<skill-name>/SKILL.md` (all auto-discovered by the loader). To add an integration, drop a new directory; reference it via `integration:` in a `RunConfig`.
+`integrations/<name>/` bundles the (MCP servers | skills | instruction append | verifier env) tuple that distinguishes a tool-access strategy for the same underlying task. Files: `integration.yaml` + sibling `instruction.md` + optional `skills/<skill-name>/SKILL.md` (all auto-discovered by the loader). To add an integration, drop a new directory; reference it via `integration:` in a `RunConfig`.
 
 ## Harbor patches
 

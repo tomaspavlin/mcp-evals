@@ -24,7 +24,7 @@ tasks/<name>/
   solution/solve.sh
 
 integrations/<vendor>-<variant>/
-  integration.yaml           # name, eval_variant, mcp_servers, skills, environment_env
+  integration.yaml           # name, mcp_servers, skills, environment_env, verifier_env
   instruction.md             # auto-discovered, appended via extra_instruction_paths
   environment/               # auto-discovered Dockerfile + proxy script; copied into the task at run time
     Dockerfile               # node:22-bookworm + `npm install -g mcp-remote apify-cli`
@@ -67,7 +67,6 @@ MCP variant (`integrations/apify-mcp/integration.yaml`):
 
 ```yaml
 name: apify-mcp
-eval_variant: mcp
 mcp_servers:
   - name: apify
     transport: stdio
@@ -76,15 +75,20 @@ mcp_servers:
 skills: []
 environment_env:
   APIFY_TOKEN: ${APIFY_TOKEN}
+verifier_env:
+  EXPECTED_CHANNEL: mcp
 ```
 
 Skill variant (Harbor uploads the host dir into `/harbor/skills/<name>/` at trial start, then copies into each harness's skill dir: `~/.claude/skills/`, `~/.config/opencode/skills/`, `$HOME/.agents/skills/` for claude-code, opencode, codex respectively):
 
 ```yaml
 name: apify-skill
-eval_variant: skill
 mcp_servers: []
 # skills/<name>/SKILL.md under the integration dir is auto-discovered
+# skill is just instructions to use the apify CLI, so the expected
+# tool-call channel is the same as apify-cli.
+verifier_env:
+  EXPECTED_CHANNEL: cli
 ```
 
 `job_builder` fans `mcp_servers` and `skills` into every agent in the RunConfig and appends the integration's `instruction.md` via the job-level `extra_instruction_paths` field. Each instruction file is appended to the task's `instruction.md` with `\n\n` separators (`src/harbor/models/task/task.py:181`).
@@ -150,7 +154,7 @@ def actor_id_matches(workspace: Path) -> bool:
 1. Copy `tasks/apify-fetch-actor-id/` to `tasks/<vendor>-<task>/` (drop the `environment/` dir - it's now owned by the integration).
 2. Rewrite `instruction.md` (task only, no tool wording) and `tests/check.py` for the new vendor.
 3. In `.env.example` + `.env`: add the new token.
-4. Create `integrations/<vendor>-<variant>/` with `integration.yaml` (`mcp_servers` and/or `skills`, `eval_variant`, `environment_env`), `instruction.md` (tool wording), and `environment/` (Dockerfile + proxy script). In the proxy script change the URL, env var name, and redaction regex.
+4. Create `integrations/<vendor>-<variant>/` with `integration.yaml` (`mcp_servers` and/or `skills`, `environment_env`, `verifier_env` with `EXPECTED_CHANNEL`), `instruction.md` (tool wording), and `environment/` (Dockerfile + proxy script). In the proxy script change the URL, env var name, and redaction regex.
 5. Add a RunConfig under `configs/` with `integration: <vendor>-<variant>` and `tasks: - path: tasks/<vendor>-<task>`.
 
 ## Existing tasks

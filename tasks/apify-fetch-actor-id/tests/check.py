@@ -7,9 +7,7 @@ from rewardkit.criteria._trajectory import collect_tool_calls, load_trajectory
 EXPECTED_ID = "moJRLRc85AitArpNN"
 TRAJECTORY_PATH = "/logs/agent/trajectory.json"
 
-VARIANT = os.environ.get("EVAL_VARIANT", "")
-# skill rides on the cli channel: the skill is just instructions to use the apify CLI.
-EXPECTED_CHANNEL = {"mcp": "mcp", "cli": "cli", "mcpc": "mcpc", "skill": "cli"}.get(VARIANT)
+EXPECTED_CHANNEL = os.environ.get("EXPECTED_CHANNEL") or None
 
 
 def _tool_calls() -> list[dict]:
@@ -54,7 +52,7 @@ def _matches_channel(tc: dict, channel: str) -> bool:
 
 def _log_summary() -> None:
     calls = _tool_calls()
-    print(f"[verifier] EVAL_VARIANT={VARIANT!r} expected_channel={EXPECTED_CHANNEL!r} tool_calls={len(calls)}")
+    print(f"[verifier] expected_channel={EXPECTED_CHANNEL!r} tool_calls={len(calls)}")
     for i, tc in enumerate(calls):
         name = tc.get("function_name", "")
         args = tc.get("arguments") or {}
