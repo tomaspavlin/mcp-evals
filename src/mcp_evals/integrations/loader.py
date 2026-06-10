@@ -24,6 +24,10 @@ def load_integration(name: str, root: Path = INTEGRATIONS_DIR) -> Integration:
     if instruction_md.is_file():
         integration.instruction_path = instruction_md
 
+    setup_sh = integration_dir / "setup.sh"
+    if setup_sh.is_file():
+        integration.setup_script_path = setup_sh
+
     environment_dir = integration_dir / "environment"
     if environment_dir.is_dir():
         integration.environment_dir = environment_dir

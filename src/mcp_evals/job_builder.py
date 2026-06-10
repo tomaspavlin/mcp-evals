@@ -6,6 +6,7 @@ from harbor.models.trial.config import (
 )
 from harbor.utils.env import resolve_env_vars
 
+from mcp_evals._patches.integration_setup_script import set_setup_script
 from mcp_evals.config import RunConfig
 from mcp_evals.defaults import (
     DEFAULT_AGENT_KWARGS,
@@ -49,6 +50,12 @@ def build_job_config(run: RunConfig, integration: Integration) -> JobConfig:
     # host environment before injecting.
     environment_env = resolve_env_vars(integration.environment_env)
     verifier_env = resolve_env_vars(integration.verifier_env)
+
+    set_setup_script(
+        integration.setup_script_path.read_text()
+        if integration.setup_script_path is not None
+        else None
+    )
 
     kwargs = {}
     if run.n_attempts is not None:

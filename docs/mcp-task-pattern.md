@@ -26,6 +26,8 @@ tasks/<name>/
 integrations/<vendor>-<variant>/
   integration.yaml           # name, mcp_servers, skills, environment_env, verifier_env
   instruction.md             # auto-discovered, appended via extra_instruction_paths
+  setup.sh                   # optional, auto-discovered; exec'd in the sandbox after env
+                             # start, before the agent runs. Use for pre-auth (CLI/skill).
   environment/               # auto-discovered Dockerfile + proxy script; copied into the task at run time
     Dockerfile               # node:22-bookworm + `npm install -g mcp-remote apify-cli`
     apify-mcp-proxy.sh       # the wrapper (see template below)

@@ -10,6 +10,14 @@ Workaround: `src/mcp_evals/_patches/codex_mcp_env.py` monkey-patches `_build_reg
 
 `tasks/apify-fetch-actor-id/tests/check.py` originally matched `function_name.startswith("apify_")` to detect MCP usage. Claude-code/opencode keep the server prefix (`apify_fetch-actor-details`); codex strips it and normalizes hyphens to underscores (`fetch_actor_details`). Fixed by switching the channel detector to an allowlist of normalized apify MCP tool names (`APIFY_MCP_TOOLS`). Extend `APIFY_MCP_TOOLS` when surfacing new apify tools in the eval.
 
+## No sandbox setup-script hook (Harbor gap)
+
+Harbor exposes `Job.add_hook(TrialEvent.AGENT_START, ...)` but the `TrialHookEvent` payload (`harbor/trial/hooks.py:21`) carries only `event`, `trial_id`, `task_name`, `config`, `result` - not the live `Trial` or `agent_environment`. So a hook callback can't `exec()` into the running sandbox. `EnvironmentConfig` also has no `setup_script` field, and single-step tasks have no equivalent of multi-step's `steps/<name>/workdir/setup.sh`.
+
+Workaround: `src/mcp_evals/_patches/integration_setup_script.py` monkey-patches `Trial._prepare` to exec an integration-provided `setup.sh` after env start + healthcheck + skill upload, before agent setup. Non-zero exit fails the trial loudly. Used by `integrations/apify-cli/setup.sh` and `integrations/apify-skill/setup.sh` to pre-run `apify login --token "$APIFY_TOKEN"`.
+
+Upstream ask: add `EnvironmentConfig.setup_script` (or expose `agent_environment` on the hook event). Remove the patch and `Integration.setup_script_path` plumbing once landed.
+
 ## E2B sandbox timeout hardcoded to 24h (Harbor gap)
 
 Harbor's `E2BEnvironment._create_sandbox` (`harbor/environments/e2b.py:198`) calls `AsyncSandbox.create(timeout=86_400)` with no override. E2B free plan caps sandbox lifetime at 1 h, so creation fails on a free key.
