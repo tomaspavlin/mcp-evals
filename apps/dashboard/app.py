@@ -319,6 +319,24 @@ with tab_grouped:
             fig_act.update_xaxes(title=" | ".join(group_by))
             st.plotly_chart(fig_act, use_container_width=True)
 
+        st.subheader(f"Channel output size (avg chars per trial){eff_note}")
+        # Verbosity of the target surface: total tool-result chars of on-channel
+        # calls. ~tokens = chars / 4. Caveat: opencode truncates huge bash
+        # outputs in the trajectory, so cli numbers can undercount (see README
+        # known limitations).
+        output_rows = [
+            {
+                "group": r["group"],
+                "chars": r["avg_channel_output_chars"],
+                "est_tokens": int(r["avg_channel_output_chars"] / 4),
+            }
+            for r in eff_rows
+        ]
+        if output_rows:
+            fig_out = px.bar(output_rows, x="group", y="chars", hover_data=["est_tokens"])
+            fig_out.update_xaxes(title=" | ".join(group_by))
+            st.plotly_chart(fig_out, use_container_width=True)
+
         # The calls behind the off-channel / errored counts, plus failed tests
         # and trial exceptions. All selected trials, not just eff_trials: a
         # failed trial's escapes are exactly what you want to inspect.

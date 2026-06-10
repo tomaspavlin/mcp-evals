@@ -90,3 +90,7 @@ harbor view tasks
 - Codex trajectories carry no per-step token metrics (harbor converter gap), so the
   `prompt_baseline_tokens` metric and the dashboard's token timeline are unavailable for
   codex trials; per-trial totals are unaffected. See `docs/todo.md`.
+- Opencode truncates large tool outputs in the trajectory (the observation records a
+  "Full output saved to: ..." stub instead of the full content), so `channel_output_chars`
+  undercounts for verbose calls; cli/mcpc variants benefit most from this. Token totals
+  are unaffected (reported by the API, not derived from content). See `docs/todo.md`.

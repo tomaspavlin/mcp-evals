@@ -12,6 +12,10 @@ cli = ["apify actors info", "apify api"]
 
 Harbor's task config accepts free-form `[metadata]`. Computed post-hoc in `src/mcp_evals/metrics.py` (no verifier changes): `unexpected_channel_tools` (channel calls outside the set) and `used_only_expected_tools` (bool). Diagnoses tool naming/description quality (agent picked the wrong tool first) and granularity. Deliberately observational, not a reward criterion: tasks can have valid alternative paths.
 
+## channel_output_chars undercounts truncated opencode outputs
+
+Opencode replaces large tool outputs with a stub in the session log ("...output truncated... Full output saved to: /root/.local/share/opencode/tool-output/..."), and the ATIF observation records the stub. `channel_output_chars` therefore measures what reached the model context (arguably the more relevant number) but undercounts what the surface actually returned; cli/mcpc bash outputs are truncated most often, MCP results typically pass through whole. If we ever need the raw size, the full outputs sit in the sandbox under opencode's tool-output dir and would have to be downloaded as artifacts before teardown. Detect the stub marker in metrics.py and flag the call (e.g. `truncated: true` in per_call) as a first step.
+
 ## Codex trajectory: no per-step token metrics (Harbor gap)
 
 Harbor's codex adapter converts the codex session log to ATIF with `metrics: null` on every step; only `final_metrics` carries token totals (the per-turn data exists at the source, see `last_token_usage` surviving in `final_metrics.extra`). Consequences: `prompt_baseline_tokens` is None for codex and the dashboard's cumulative-token timeline is empty for codex trials. Trial-level totals (tokens, cost) are unaffected. Fix upstream in harbor's codex trajectory conversion rather than in `_patches/`.
