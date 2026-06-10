@@ -18,12 +18,10 @@ from __future__ import annotations
 
 from typing import Any
 
-# Per-target matcher registry. Somewhat hacky: hardcoded here instead of
-# declared in integrations/<name>/ because job outputs do not record the
-# integration, so there is no reliable join key (see HACK on target_for_task).
-# `mcp_tools` is the allowlist of normalized tool names needed for
-# prefix-stripping harnesses (codex); extend it when surfacing new tools in
-# the eval.
+# Per-target matcher registry. Hardcoded here rather than declared in
+# integrations/<name>/ for now. `mcp_tools` is the allowlist of normalized tool
+# names needed for prefix-stripping harnesses (codex); extend it when
+# surfacing new tools in the eval.
 TARGETS: dict[str, dict[str, Any]] = {
     "apify": {
         "mcp_name_prefixes": ("apify_", "apify-", "mcp__apify__"),
@@ -64,9 +62,21 @@ WORKSPACE_TOOLS = {
 _ERROR_HEAD_PREFIXES = ("error", "traceback (most recent call last)")
 _ERROR_SUBSTRINGS = ("command not found", "permission denied")
 
-# HACK: target inferred from the task-name prefix because trial configs do not
-# record it. Breaks for tasks not named <target>-*; record the target in
-# verifier env (like EXPECTED_CHANNEL) and read it from trial config instead.
+def parse_integration(name: str | None) -> tuple[str | None, str | None]:
+    """Split an integration name into (target, access_mode).
+
+    'apify-mcp' -> ('apify', 'mcp'); 'github-cli' -> ('github', 'cli').
+    Returns (None, None) for missing or malformed names.
+    """
+    if not name or "-" not in name:
+        return None, None
+    target, mode = name.split("-", 1)
+    return target, mode
+
+
+# Fallback for jobs that predate MCP_EVALS_INTEGRATION in verifier env: infer
+# the target from the task-name prefix. Prefer reading the integration from
+# trial config (verifier env) and calling parse_integration() instead.
 def target_for_task(task_name: str) -> str | None:
     """Derive the eval target from the task-name prefix (apify-*, github-*)."""
     for target in TARGETS:

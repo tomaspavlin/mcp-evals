@@ -12,8 +12,9 @@ from harbor.viewer.scanner import JobScanner
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 JOBS_DIR = REPO_ROOT / "jobs"
-KNOWN_VARIANTS = {"mcp", "cli", "skill", "mcpc"}
-GROUP_KEYS = ["job", "variant", "task", "agent", "model"]
+# Fallback parse for jobs predating MCP_EVALS_INTEGRATION in verifier env.
+KNOWN_INTEGRATION_TYPES = {"mcp", "cli", "skill", "mcpc"}
+GROUP_KEYS = ["job", "integration", "integration_type", "integration_target", "task", "agent", "model"]
 
 # Shared trajectory-metric logic (stdlib-only). Loaded by file path because the
 # dashboard venv has streamlit+harbor but not the mcp_evals package, and
@@ -35,11 +36,11 @@ def read_json(path: Path) -> dict | None:
         return None
 
 
-def parse_variant(job_name: str) -> str:
+def _fallback_integration_type(job_name: str) -> str:
+    # Used only when the trial's verifier env lacks MCP_EVALS_INTEGRATION.
     # Naming convention (AGENTS.md): <dataset>-<harness>-<model>-<tool>-<purpose>.
-    # The tool is one of KNOWN_VARIANTS; scan tokens for the first match.
     for tok in job_name.split("-"):
-        if tok in KNOWN_VARIANTS:
+        if tok in KNOWN_INTEGRATION_TYPES:
             return tok
     return "?"
 
@@ -107,14 +108,20 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
         n_in, n_cache, n_out, cost = tr.compute_token_cost_totals()
         errored = tr.exception_info is not None
         channel = None
+        integration = None
         if tr.config and tr.config.verifier:
             channel = tr.config.verifier.env.get("EXPECTED_CHANNEL") or None
-        target = metrics_mod.target_for_task(tr.task_name or "")
+            integration = tr.config.verifier.env.get("MCP_EVALS_INTEGRATION") or None
+        integration_target, integration_type = metrics_mod.parse_integration(integration)
+        if integration_target is None:
+            integration_target = metrics_mod.target_for_task(tr.task_name or "")
+        if integration_type is None:
+            integration_type = _fallback_integration_type(job_name)
         trial_dir = JOBS_DIR / job_name / trial_name
         details = read_json(trial_dir / "verifier" / "reward-details.json")
         passed = metrics_mod.tests_passed(details)
         traj = read_json(trial_dir / "agent" / "trajectory.json") or {}
-        trial_metrics, per_call = metrics_mod.compute_trial_metrics(traj, channel, target)
+        trial_metrics, per_call = metrics_mod.compute_trial_metrics(traj, channel, integration_target)
         values = metrics_mod.call_values(per_call)
 
         def _secs(ti):
@@ -127,9 +134,10 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
         out.append({
             "job": job_name,
             "trial": trial_name,
-            "variant": parse_variant(job_name),
+            "integration": integration or "?",
+            "integration_type": integration_type,
+            "integration_target": integration_target,
             "channel": channel,
-            "target": target,
             "task": tr.task_name,
             "agent": tr.agent_info.name if tr.agent_info else None,
             "model": model_name,
@@ -204,13 +212,21 @@ def aggregate(trials: list[dict], by: list[str]) -> list[dict]:
                 g["baseline_sum"] / g["baseline_n"] if g["baseline_n"] else None
             ),
             "cost_usd": g["cost_usd"],
+            "avg_cost_usd": g["cost_usd"] / total,
             "input_tokens": g["n_input"],
             "cache_tokens": g["n_cache"],
             "output_tokens": g["n_output"],
+            "avg_input_tokens": g["n_input"] / total,
+            "avg_cache_tokens": g["n_cache"] / total,
+            "avg_output_tokens": g["n_output"] / total,
             "env_setup_s": g["t_env_setup"],
             "agent_setup_s": g["t_agent_setup"],
             "agent_exec_s": g["t_agent_exec"],
             "verifier_s": g["t_verifier"],
+            "avg_env_setup_s": g["t_env_setup"] / total,
+            "avg_agent_setup_s": g["t_agent_setup"] / total,
+            "avg_agent_exec_s": g["t_agent_exec"] / total,
+            "avg_verifier_s": g["t_verifier"] / total,
         })
     rows.sort(key=lambda r: r["group"])
     return rows
@@ -321,21 +337,19 @@ with tab_grouped:
             st.info("No per-step token metrics in the selected trials (codex trajectories lack them).")
 
         if eff_rows:
-            st.subheader(f"Cost (USD){eff_note}")
-            fig_cost = px.bar(eff_rows, x="group", y="cost_usd", hover_data=["input_tokens", "cache_tokens", "output_tokens"])
+            st.subheader(f"Avg cost per trial (USD){eff_note}")
+            fig_cost = px.bar(eff_rows, x="group", y="avg_cost_usd", hover_data=["cost_usd", "total"])
             fig_cost.update_xaxes(title=" | ".join(group_by))
             st.plotly_chart(fig_cost, use_container_width=True)
 
         if eff_rows:
-            st.subheader(f"Duration (s){eff_note}")
-            # Summed per-phase seconds across trials in the group. NOTE: trials run in
-            # parallel, so this is not wall-clock time.
+            st.subheader(f"Avg duration per trial (s){eff_note}")
             duration_rows = []
             for r in eff_rows:
-                duration_rows.append({"group": r["group"], "phase": "env setup", "seconds": r["env_setup_s"]})
-                duration_rows.append({"group": r["group"], "phase": "agent setup", "seconds": r["agent_setup_s"]})
-                duration_rows.append({"group": r["group"], "phase": "agent exec", "seconds": r["agent_exec_s"]})
-                duration_rows.append({"group": r["group"], "phase": "verifier", "seconds": r["verifier_s"]})
+                duration_rows.append({"group": r["group"], "phase": "env setup", "seconds": r["avg_env_setup_s"]})
+                duration_rows.append({"group": r["group"], "phase": "agent setup", "seconds": r["avg_agent_setup_s"]})
+                duration_rows.append({"group": r["group"], "phase": "agent exec", "seconds": r["avg_agent_exec_s"]})
+                duration_rows.append({"group": r["group"], "phase": "verifier", "seconds": r["avg_verifier_s"]})
             fig_dur = px.bar(
                 duration_rows,
                 x="group",
@@ -347,13 +361,13 @@ with tab_grouped:
             fig_dur.update_xaxes(title=" | ".join(group_by))
             st.plotly_chart(fig_dur, use_container_width=True)
 
-            st.subheader(f"Token usage{eff_note}")
+            st.subheader(f"Avg token usage per trial{eff_note}")
             # n_input_tokens includes cache; uncached = input - cache. See harbor/viewer/server.py:_uncached_input.
             token_rows = []
             for r in eff_rows:
-                n_in = r["input_tokens"] or 0
-                n_cache = r["cache_tokens"] or 0
-                n_out = r["output_tokens"] or 0
+                n_in = r["avg_input_tokens"] or 0
+                n_cache = r["avg_cache_tokens"] or 0
+                n_out = r["avg_output_tokens"] or 0
                 token_rows.append({"group": r["group"], "kind": "input (cached)", "tokens": n_cache})
                 token_rows.append({"group": r["group"], "kind": "input (uncached)", "tokens": max(0, n_in - n_cache)})
                 token_rows.append({"group": r["group"], "kind": "output", "tokens": n_out})
@@ -382,14 +396,14 @@ with tab_trials:
         x_axis = st.selectbox("X axis", ["time (s)", "step", "trial"], index=0)
         only_channel = st.checkbox("Show only channel events", value=False)
         task_trials = [t for t in trials if t["task"] == picked_task]
-        # Style: color = variant, dash = (model, agent). Trials sharing all three
-        # render identically (intentional). Each distinct (variant, model, agent)
-        # combination contributes a single legend entry.
+        # Style: color = integration_type, dash = (model, agent). Trials sharing all
+        # three render identically (intentional). Each distinct (integration_type,
+        # model, agent) combination contributes a single legend entry.
         palette = px.colors.qualitative.Plotly
         dash_cycle = ["solid", "dot", "dash", "longdash", "dashdot", "longdashdot"]
-        variants_seen = sorted({t["variant"] for t in task_trials})
+        modes_seen = sorted({t["integration_type"] for t in task_trials})
         ma_seen = sorted({(t.get("model") or "?", t.get("agent") or "?") for t in task_trials})
-        color_for = {v: palette[i % len(palette)] for i, v in enumerate(variants_seen)}
+        color_for = {v: palette[i % len(palette)] for i, v in enumerate(modes_seen)}
         dash_for = {ma: dash_cycle[i % len(dash_cycle)] for i, ma in enumerate(ma_seen)}
         legend_shown: set[tuple] = set()
         fig_tl = go.Figure()
@@ -401,7 +415,7 @@ with tab_trials:
             kinds = [
                 metrics_mod.classify_call(
                     {"function_name": m["name"], "arguments": m["args"]},
-                    t["target"], t["channel"],
+                    t["integration_target"], t["channel"],
                 )
                 for m in tl["marks"]
             ]
@@ -409,7 +423,7 @@ with tab_trials:
             for m, kind in zip(tl["marks"], kinds):
                 tool_call_rows.append({
                     "trial": t["trial"],
-                    "variant": t["variant"],
+                    "integration_type": t["integration_type"],
                     "t_s": round(m["t"], 2),
                     "cum_tokens": m["cum_tokens"],
                     "tool": m["name"],
@@ -419,7 +433,8 @@ with tab_trials:
             table_rows.append({
                 "trial": t["trial"],
                 "job": t["job"],
-                "variant": t["variant"],
+                "integration": t["integration"],
+                "integration_type": t["integration_type"],
                 "model": t["model"],
                 "tests_passed": t["tests_passed"],
                 "failed_criteria": t["failed_criteria"],
@@ -442,12 +457,12 @@ with tab_trials:
             })
             if not tl["line"]:
                 continue
-            variant = t["variant"]
+            mode = t["integration_type"]
             ma = (t.get("model") or "?", t.get("agent") or "?")
-            style_key = (variant, ma)
-            color = color_for[variant]
+            style_key = (mode, ma)
+            color = color_for[mode]
             dash = dash_for[ma]
-            group_label = f"{variant} | {ma[0]} / {ma[1]}"
+            group_label = f"{mode} | {ma[0]} / {ma[1]}"
             show_legend = style_key not in legend_shown
             legend_shown.add(style_key)
 
@@ -503,7 +518,7 @@ with tab_trials:
             def _label(name: str) -> str:
                 t = meta_for.get(name, {})
                 return (
-                    f"{t.get('variant', '?')} | {t.get('model', '?')} / {t.get('agent', '?')} "
+                    f"{t.get('integration_type', '?')} | {t.get('model', '?')} / {t.get('agent', '?')} "
                     f"- {'passed' if t.get('tests_passed') else 'failed'} - {name}"
                 )
 
@@ -524,33 +539,33 @@ with tab_trials:
             st.info("No tool calls recorded for trials of this task.")
 
 with tab_grid:
-    # Per (task, agent+model, variant) avg-tokens stacked bars, faceted by row=task, col=agent+model.
+    # Per (task, agent+model, integration_type) avg-tokens stacked bars, faceted by row=task, col=agent+model.
     grid_trials = [t for t in trials if t["tests_passed"]] if passed_only else trials
     cells: dict[tuple, dict] = defaultdict(lambda: {"n_input": 0, "n_cache": 0, "n_output": 0, "count": 0})
     for t in grid_trials:
         am = f"{t.get('agent') or '?'} / {t.get('model') or '?'}"
-        key = (t["task"], am, t["variant"])
+        key = (t["task"], am, t["integration_type"])
         c = cells[key]
         c["n_input"] += t["n_input"]
         c["n_cache"] += t["n_cache"]
         c["n_output"] += t["n_output"]
         c["count"] += 1
     grid_rows = []
-    for (task, am, variant), c in cells.items():
+    for (task, am, mode), c in cells.items():
         n = c["count"] or 1
-        grid_rows.append({"task": task, "agent_model": am, "variant": variant,
+        grid_rows.append({"task": task, "agent_model": am, "integration_type": mode,
                           "kind": "input (cached)", "tokens": c["n_cache"] / n})
-        grid_rows.append({"task": task, "agent_model": am, "variant": variant,
+        grid_rows.append({"task": task, "agent_model": am, "integration_type": mode,
                           "kind": "input (uncached)", "tokens": max(0, c["n_input"] - c["n_cache"]) / n})
-        grid_rows.append({"task": task, "agent_model": am, "variant": variant,
+        grid_rows.append({"task": task, "agent_model": am, "integration_type": mode,
                           "kind": "output", "tokens": c["n_output"] / n})
     if not grid_rows:
         st.info("No trial data in the selected jobs (with 'passed trials only' on, only passed trials count).")
     else:
-        variant_order = sorted({r["variant"] for r in grid_rows})
+        mode_order = sorted({r["integration_type"] for r in grid_rows})
         fig_grid = px.bar(
             grid_rows,
-            x="variant",
+            x="integration_type",
             y="tokens",
             color="kind",
             facet_col="agent_model",
@@ -558,7 +573,7 @@ with tab_grid:
             barmode="stack",
             category_orders={
                 "kind": ["input (cached)", "input (uncached)", "output"],
-                "variant": variant_order,
+                "integration_type": mode_order,
             },
             color_discrete_map={
                 "input (cached)": "#9ecae1",

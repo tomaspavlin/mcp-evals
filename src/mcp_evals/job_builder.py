@@ -50,7 +50,12 @@ def build_job_config(run: RunConfig, integration: Integration) -> JobConfig:
     # host environment before injecting.
     environment_env = resolve_env_vars(integration.environment_env)
     setup_env = resolve_env_vars(integration.setup_env)
-    verifier_env = resolve_env_vars(integration.verifier_env)
+    # MCP_EVALS_INTEGRATION lets downstream consumers (dashboard, metrics) read
+    # the integration name from trial config instead of regex-scanning job names.
+    verifier_env = {
+        **resolve_env_vars(integration.verifier_env),
+        "MCP_EVALS_INTEGRATION": integration.name,
+    }
 
     set_setup_script(
         integration.setup_script_path.read_text()
