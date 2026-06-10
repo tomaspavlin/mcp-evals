@@ -1,5 +1,21 @@
 # TODO
 
+## Expected-tool-set metrics (deferred)
+
+Per-task, per-channel declaration of which tools should suffice, e.g. in `task.toml`:
+
+```toml
+[metadata.expected_tools]
+mcp = ["fetch-actor-details"]
+cli = ["apify actors info", "apify api"]
+```
+
+Harbor's task config accepts free-form `[metadata]`. Computed post-hoc in `src/mcp_evals/metrics.py` (no verifier changes): `unexpected_channel_tools` (channel calls outside the set) and `used_only_expected_tools` (bool). Diagnoses tool naming/description quality (agent picked the wrong tool first) and granularity. Deliberately observational, not a reward criterion: tasks can have valid alternative paths.
+
+## Codex trajectory: no per-step token metrics (Harbor gap)
+
+Harbor's codex adapter converts the codex session log to ATIF with `metrics: null` on every step; only `final_metrics` carries token totals (the per-turn data exists at the source, see `last_token_usage` surviving in `final_metrics.extra`). Consequences: `prompt_baseline_tokens` is None for codex and the dashboard's cumulative-token timeline is empty for codex trials. Trial-level totals (tokens, cost) are unaffected. Fix upstream in harbor's codex trajectory conversion rather than in `_patches/`.
+
 ## Codex agent: MCP env not propagated (Harbor gap)
 
 Harbor's codex agent (`harbor/agents/installed/codex.py`, `_build_register_mcp_servers_command`) writes only `command`/`url` to `$CODEX_HOME/config.toml`, never `env`. Codex CLI does support `env = { KEY = "value" }` per [codex config reference](https://developers.openai.com/codex/config-reference), so MCP child processes never receive secrets we declared via task `[environment.env]`.

@@ -66,9 +66,13 @@ If a run fails with `FileExistsError` (job dir already exists), remove `jobs/<jo
 
 `src/mcp_evals/_patches/` holds runtime monkey-patches for harbor upstream gaps (codex MCP env propagation, E2B free-tier sandbox timeout, integration `setup.sh` exec in the sandbox). Prefer upstreaming over patching when feasible.
 
+## Metrics
+
+Trajectory-derived metrics (channel/escape call classification, errored calls, `prompt_baseline_tokens`, `tests_passed` from reward-details) live in `src/mcp_evals/metrics.py`: stdlib-only pure functions over ATIF trajectories, importable from any app without harbor. Channel matching is mirrored in `tasks/*/tests/check.py` (verifier containers cannot import the package); keep both in sync. Unit tests in `tests/`, run with `uv run pytest`.
+
 ## Dashboard
 
-Custom Streamlit app at `apps/dashboard/` for project-specific plots over `jobs/`. Reads via Harbor's `JobScanner` so schema parsing stays in sync. Complements `harbor view jobs`, does not replace it. See `apps/dashboard/README.md` for setup and run instructions.
+Custom Streamlit app at `apps/dashboard/` for project-specific plots over `jobs/`. Reads via Harbor's `JobScanner` so schema parsing stays in sync, and loads `src/mcp_evals/metrics.py` by file path for trial metrics. Complements `harbor view jobs`, does not replace it. See `apps/dashboard/README.md` for setup and run instructions.
 
 ## Project docs
 

@@ -15,10 +15,13 @@ def _tool_calls() -> list[dict]:
     return collect_tool_calls(data) if data else []
 
 
+# Channel matching mirrored from src/mcp_evals/metrics.py (cannot import the
+# package inside the verifier container); keep both in sync manually.
+#
 # Apify MCP tool allowlist for harnesses that strip the server prefix from
-# tool names (codex: "fetch_actor_details"). Claude-code/opencode preserve
-# the prefix ("apify_fetch-actor-details") and are caught by the apify_
-# prefix check directly; this list only needs to cover the prefix-strippers.
+# tool names (codex: "fetch_actor_details"). Claude-code preserves a
+# "mcp__apify__" prefix, opencode an "apify_" prefix; both are caught by the
+# prefix check directly, this list only needs to cover the prefix-strippers.
 # Extend when surfacing new apify tools in the eval.
 APIFY_MCP_TOOLS = {
     "fetch-actor-details",
@@ -29,9 +32,14 @@ APIFY_MCP_TOOLS = {
     "search-apify-docs",
 }
 
+MCP_NAME_PREFIXES = ("apify_", "apify-", "mcp__apify__")
+# Shell tool names per harness: opencode "bash", claude-code "Bash" (lowercased
+# before comparison), codex "exec_command" (command in the "cmd" argument).
+SHELL_TOOLS = {"bash", "exec_command", "shell", "run_terminal_cmd", "local_shell"}
+
 
 def _normalize_mcp_tool(name: str) -> str:
-    for prefix in ("apify_", "apify-"):
+    for prefix in MCP_NAME_PREFIXES:
         if name.startswith(prefix):
             name = name[len(prefix):]
             break
@@ -39,14 +47,15 @@ def _normalize_mcp_tool(name: str) -> str:
 
 
 def _matches_channel(tc: dict, channel: str) -> bool:
-    name = tc.get("function_name") or ""
-    cmd = ((tc.get("arguments") or {}).get("command") or "").lstrip()
+    name = (tc.get("function_name") or "").lower()
+    args = tc.get("arguments") or {}
+    cmd = ((args.get("command") or args.get("cmd")) or "").lstrip()
     if channel == "mcp":
-        return name.startswith("apify_") or _normalize_mcp_tool(name) in APIFY_MCP_TOOLS
+        return name.startswith(MCP_NAME_PREFIXES) or _normalize_mcp_tool(name) in APIFY_MCP_TOOLS
     if channel == "cli":
-        return name == "bash" and cmd.startswith("apify ")
+        return name in SHELL_TOOLS and cmd.startswith("apify ")
     if channel == "mcpc":
-        return name == "bash" and cmd.startswith("mcpc ")
+        return name in SHELL_TOOLS and cmd.startswith("mcpc ")
     return False
 
 
@@ -56,7 +65,7 @@ def _log_summary() -> None:
     for i, tc in enumerate(calls):
         name = tc.get("function_name", "")
         args = tc.get("arguments") or {}
-        cmd = args.get("command")
+        cmd = args.get("command") or args.get("cmd")
         snippet = cmd if cmd else str(args)
         match = "*" if EXPECTED_CHANNEL and _matches_channel(tc, EXPECTED_CHANNEL) else " "
         print(f"[verifier] {match} {i:3d} {name}  {str(snippet)[:140]}")

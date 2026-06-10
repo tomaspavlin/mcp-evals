@@ -84,3 +84,9 @@ See `apps/dashboard/README.md` for first-time setup.
 ```bash
 harbor view tasks
 ```
+
+## Known limitations
+
+- Codex trajectories carry no per-step token metrics (harbor converter gap), so the
+  `prompt_baseline_tokens` metric and the dashboard's token timeline are unavailable for
+  codex trials; per-trial totals are unaffected. See `docs/todo.md`.

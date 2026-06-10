@@ -14,13 +14,22 @@ def _tool_calls() -> list[dict]:
     return collect_tool_calls(data) if data else []
 
 
+# Channel matching mirrored from src/mcp_evals/metrics.py (cannot import the
+# package inside the verifier container); keep both in sync manually.
+# Shell tool names per harness: opencode "bash", claude-code "Bash" (lowercased
+# before comparison), codex "exec_command" (command in the "cmd" argument).
+MCP_NAME_PREFIXES = ("github_", "github-", "mcp__github__")
+SHELL_TOOLS = {"bash", "exec_command", "shell", "run_terminal_cmd", "local_shell"}
+
+
 def _matches_channel(tc: dict, channel: str) -> bool:
-    name = tc.get("function_name") or ""
-    cmd = ((tc.get("arguments") or {}).get("command") or "").lstrip()
+    name = (tc.get("function_name") or "").lower()
+    args = tc.get("arguments") or {}
+    cmd = ((args.get("command") or args.get("cmd")) or "").lstrip()
     if channel == "mcp":
-        return name.startswith("github_")
+        return name.startswith(MCP_NAME_PREFIXES)
     if channel == "cli":
-        return name == "bash" and cmd.startswith("gh ")
+        return name in SHELL_TOOLS and cmd.startswith("gh ")
     return False
 
 
@@ -30,7 +39,7 @@ def _log_summary() -> None:
     for i, tc in enumerate(calls):
         name = tc.get("function_name", "")
         args = tc.get("arguments") or {}
-        cmd = args.get("command")
+        cmd = args.get("command") or args.get("cmd")
         snippet = cmd if cmd else str(args)
         match = "*" if EXPECTED_CHANNEL and _matches_channel(tc, EXPECTED_CHANNEL) else " "
         print(f"[verifier] {match} {i:3d} {name}  {str(snippet)[:140]}")

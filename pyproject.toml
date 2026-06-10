@@ -12,6 +12,9 @@ dependencies = [
     "python-dotenv>=1.1.1",
 ]
 
+[dependency-groups]
+dev = ["pytest>=8"]
+
 [project.scripts]
 mcp-evals = "mcp_evals.cli.main:app"
 

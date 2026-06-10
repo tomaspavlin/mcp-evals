@@ -22,5 +22,6 @@ Opens at http://localhost:8501. Pick jobs in the sidebar.
 
 ## Layout
 
-- `app.py` - single-page Streamlit entry point.
+- `app.py` - single-page Streamlit entry point. Loads `src/mcp_evals/metrics.py` by file
+  path (stdlib-only), so the mcp_evals package does not need to be installed in this venv.
 - `requirements.txt` - `streamlit`, `plotly`. Harbor is installed separately (editable from `../harbor`).

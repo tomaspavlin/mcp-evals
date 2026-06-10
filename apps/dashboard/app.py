@@ -1,3 +1,4 @@
+import importlib.util
 import json
 from collections import defaultdict
 from datetime import datetime
@@ -9,34 +10,29 @@ import streamlit as st
 
 from harbor.viewer.scanner import JobScanner
 
-JOBS_DIR = Path(__file__).resolve().parents[2] / "jobs"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+JOBS_DIR = REPO_ROOT / "jobs"
 KNOWN_VARIANTS = {"mcp", "cli", "skill", "mcpc"}
 GROUP_KEYS = ["job", "variant", "task", "agent", "model"]
 
-# Channel-matching logic mirrored from
-# tasks/apify-fetch-actor-id/tests/check.py:_matches_channel.
-# Copied (not imported) because check.py runs inside the verifier container
-# and depends on rewardkit + a fixed /logs path; keep both in sync manually.
-# Differences vs check.py (latent bugs in check.py worth porting back):
-#   - lower-case function name (Claude Code emits `Bash`, check.py compares `"bash"`)
-#   - mcp channel also matches `mcp__apify__*` (Claude Code's MCP naming),
-#     not just the `apify_*` style used by other harnesses.
-VARIANT_CHANNEL = {"mcp": "mcp", "cli": "cli", "mcpc": "mcpc", "skill": "cli"}
-
-
-def matches_channel(name: str, args: dict, channel: str) -> bool:
-    name_l = (name or "").lower()
-    cmd = ((args or {}).get("command") or "").lstrip()
-    if channel == "mcp":
-        return name_l.startswith("apify_") or name_l.startswith("mcp__apify__")
-    if channel == "cli":
-        return name_l == "bash" and cmd.startswith("apify ")
-    if channel == "mcpc":
-        return name_l == "bash" and cmd.startswith("mcpc ")
-    return False
+# Shared trajectory-metric logic (stdlib-only). Loaded by file path because the
+# dashboard venv has streamlit+harbor but not the mcp_evals package, and
+# importing the package would also trigger its harbor monkey-patches.
+_spec = importlib.util.spec_from_file_location(
+    "mcp_evals_metrics", REPO_ROOT / "src" / "mcp_evals" / "metrics.py"
+)
+metrics_mod = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(metrics_mod)
 
 st.set_page_config(page_title="mcp-evals dashboard", layout="wide")
 st.title("mcp-evals dashboard")
+
+
+def read_json(path: Path) -> dict | None:
+    try:
+        return json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 def parse_variant(job_name: str) -> str:
@@ -110,12 +106,15 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
             continue
         n_in, n_cache, n_out, cost = tr.compute_token_cost_totals()
         errored = tr.exception_info is not None
-        rewards = (
-            tr.verifier_result.rewards
-            if tr.verifier_result and tr.verifier_result.rewards
-            else None
-        )
-        reward = sum(rewards.values()) / len(rewards) if rewards else 0.0
+        channel = None
+        if tr.config and tr.config.verifier:
+            channel = tr.config.verifier.env.get("EXPECTED_CHANNEL") or None
+        target = metrics_mod.target_for_task(tr.task_name or "")
+        trial_dir = JOBS_DIR / job_name / trial_name
+        details = read_json(trial_dir / "verifier" / "reward-details.json")
+        passed = metrics_mod.tests_passed(details)
+        traj = read_json(trial_dir / "agent" / "trajectory.json") or {}
+        trial_metrics, _ = metrics_mod.compute_trial_metrics(traj, channel, target)
 
         def _secs(ti):
             if ti is None or ti.started_at is None or ti.finished_at is None:
@@ -128,10 +127,13 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
             "job": job_name,
             "trial": trial_name,
             "variant": parse_variant(job_name),
+            "channel": channel,
+            "target": target,
             "task": tr.task_name,
             "agent": tr.agent_info.name if tr.agent_info else None,
             "model": model_name,
-            "reward": reward,
+            "tests_passed": bool(passed) and not errored,
+            "failed_criteria": ", ".join(metrics_mod.failed_criteria(details)),
             "errored": errored,
             "n_input": n_in or 0,
             "n_cache": n_cache or 0,
@@ -141,15 +143,19 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
             "t_agent_setup": _secs(tr.agent_setup),
             "t_agent_exec": _secs(tr.agent_execution),
             "t_verifier": _secs(tr.verifier),
+            **trial_metrics,
         })
     return out
 
 
 def aggregate(trials: list[dict], by: list[str]) -> list[dict]:
     groups: dict[str, dict] = defaultdict(lambda: {
-        "reward_sum": 0.0, "errored": 0, "total": 0,
+        "passed": 0, "errored": 0, "total": 0,
         "cost_usd": 0.0, "n_input": 0, "n_cache": 0, "n_output": 0,
         "t_env_setup": 0.0, "t_agent_setup": 0.0, "t_agent_exec": 0.0, "t_verifier": 0.0,
+        "agent_turns": 0, "channel_calls": 0, "off_channel_calls": 0,
+        "errored_calls": 0, "channel_output_chars": 0,
+        "baseline_sum": 0, "baseline_n": 0,
     })
     for t in trials:
         key = " | ".join(str(t.get(b) or "?") for b in by)
@@ -157,7 +163,8 @@ def aggregate(trials: list[dict], by: list[str]) -> list[dict]:
         g["total"] += 1
         if t["errored"]:
             g["errored"] += 1
-        g["reward_sum"] += t["reward"]
+        if t["tests_passed"]:
+            g["passed"] += 1
         g["cost_usd"] += t["cost_usd"]
         g["n_input"] += t["n_input"]
         g["n_cache"] += t["n_cache"]
@@ -166,14 +173,32 @@ def aggregate(trials: list[dict], by: list[str]) -> list[dict]:
         g["t_agent_setup"] += t["t_agent_setup"]
         g["t_agent_exec"] += t["t_agent_exec"]
         g["t_verifier"] += t["t_verifier"]
+        g["agent_turns"] += t["agent_turns"]
+        g["channel_calls"] += t["channel_calls"]
+        g["off_channel_calls"] += t["off_channel_calls"]
+        g["errored_calls"] += t["errored_calls"]
+        g["channel_output_chars"] += t["channel_output_chars"]
+        if t["prompt_baseline_tokens"]:
+            g["baseline_sum"] += t["prompt_baseline_tokens"]
+            g["baseline_n"] += 1
     rows = []
     for key, g in groups.items():
         total = g["total"] or 1
         rows.append({
             "group": key,
             "total": g["total"],
+            "passed": g["passed"],
             "errored": g["errored"],
-            "avg_reward": g["reward_sum"] / total,
+            "pass_rate": g["passed"] / total,
+            "avg_agent_turns": g["agent_turns"] / total,
+            "avg_channel_calls": g["channel_calls"] / total,
+            "avg_off_channel_calls": g["off_channel_calls"] / total,
+            "avg_errored_calls": g["errored_calls"] / total,
+            "avg_channel_output_chars": g["channel_output_chars"] / total,
+            # ~tokens at 4 chars/token; codex trials lack per-step metrics (None baseline)
+            "avg_prompt_baseline_tokens": (
+                g["baseline_sum"] / g["baseline_n"] if g["baseline_n"] else None
+            ),
             "cost_usd": g["cost_usd"],
             "input_tokens": g["n_input"],
             "cache_tokens": g["n_cache"],
@@ -206,6 +231,8 @@ selected = sorted(selected, key=all_jobs.index)
 if not selected:
     st.info("Pick at least one job in the sidebar.")
     st.stop()
+# Efficiency of a failed trial is noise; default to comparing passed trials only.
+passed_only = st.sidebar.checkbox("Efficiency metrics: passed trials only", value=True)
 
 mtimes = {p.name: p.stat().st_mtime for p in job_dirs}
 trials: list[dict] = []
@@ -224,66 +251,103 @@ with tab_grouped:
         st.info("Pick at least one grouping dimension.")
     else:
         rows = aggregate(trials, group_by)
+        eff_trials = [t for t in trials if t["tests_passed"]] if passed_only else trials
+        eff_rows = aggregate(eff_trials, group_by) if eff_trials else []
+        eff_note = " (passed trials only)" if passed_only else ""
 
         st.subheader(f"Summary (grouped by {' | '.join(group_by)})")
         st.dataframe(rows, use_container_width=True)
 
-        st.subheader("Avg reward")
-        fig = px.bar(rows, x="group", y="avg_reward", hover_data=["errored", "total"])
+        st.subheader("Pass rate")
+        # All verifier criteria true and no trial exception. Health gate, not an
+        # optimization target: anything under 1.0 deserves a look at the trial.
+        fig = px.bar(rows, x="group", y="pass_rate", hover_data=["passed", "errored", "total"])
         fig.update_xaxes(title=" | ".join(group_by))
         fig.update_yaxes(range=[0, 1])
         st.plotly_chart(fig, use_container_width=True)
 
-        st.subheader("Cost (USD)")
-        fig_cost = px.bar(rows, x="group", y="cost_usd", hover_data=["input_tokens", "cache_tokens", "output_tokens"])
-        fig_cost.update_xaxes(title=" | ".join(group_by))
-        st.plotly_chart(fig_cost, use_container_width=True)
+        if not eff_rows:
+            st.warning("No passed trials in the selection; efficiency charts are empty. "
+                       "Untick 'passed trials only' to include failed trials.")
 
-        st.subheader("Duration (s)")
-        # Summed per-phase seconds across trials in the group. NOTE: trials run in
-        # parallel, so this is not wall-clock time.
-        duration_rows = []
-        for r in rows:
-            duration_rows.append({"group": r["group"], "phase": "env setup", "seconds": r["env_setup_s"]})
-            duration_rows.append({"group": r["group"], "phase": "agent setup", "seconds": r["agent_setup_s"]})
-            duration_rows.append({"group": r["group"], "phase": "agent exec", "seconds": r["agent_exec_s"]})
-            duration_rows.append({"group": r["group"], "phase": "verifier", "seconds": r["verifier_s"]})
-        fig_dur = px.bar(
-            duration_rows,
-            x="group",
-            y="seconds",
-            color="phase",
-            barmode="stack",
-            category_orders={"phase": ["env setup", "agent setup", "agent exec", "verifier"]},
-        )
-        fig_dur.update_xaxes(title=" | ".join(group_by))
-        st.plotly_chart(fig_dur, use_container_width=True)
+        st.subheader(f"Channel activity (avg per trial){eff_note}")
+        activity_rows = []
+        for r in eff_rows:
+            activity_rows.append({"group": r["group"], "metric": "channel calls", "value": r["avg_channel_calls"]})
+            activity_rows.append({"group": r["group"], "metric": "off-channel calls", "value": r["avg_off_channel_calls"]})
+            activity_rows.append({"group": r["group"], "metric": "errored calls", "value": r["avg_errored_calls"]})
+            activity_rows.append({"group": r["group"], "metric": "agent turns", "value": r["avg_agent_turns"]})
+        if activity_rows:
+            fig_act = px.bar(activity_rows, x="group", y="value", color="metric", barmode="group")
+            fig_act.update_xaxes(title=" | ".join(group_by))
+            st.plotly_chart(fig_act, use_container_width=True)
 
-        st.subheader("Token usage")
-        # n_input_tokens includes cache; uncached = input - cache. See harbor/viewer/server.py:_uncached_input.
-        token_rows = []
-        for r in rows:
-            n_in = r["input_tokens"] or 0
-            n_cache = r["cache_tokens"] or 0
-            n_out = r["output_tokens"] or 0
-            token_rows.append({"group": r["group"], "kind": "input (cached)", "tokens": n_cache})
-            token_rows.append({"group": r["group"], "kind": "input (uncached)", "tokens": max(0, n_in - n_cache)})
-            token_rows.append({"group": r["group"], "kind": "output", "tokens": n_out})
-        fig_tokens = px.bar(
-            token_rows,
-            x="group",
-            y="tokens",
-            color="kind",
-            barmode="stack",
-            category_orders={"kind": ["input (cached)", "input (uncached)", "output"]},
-            color_discrete_map={
-                "input (cached)": "#9ecae1",
-                "input (uncached)": "#d62728",
-                "output": "#2ca02c",
-            },
-        )
-        fig_tokens.update_xaxes(title=" | ".join(group_by))
-        st.plotly_chart(fig_tokens, use_container_width=True)
+        st.subheader("Prompt baseline tokens (avg first-step prompt)")
+        # Fixed context overhead: system prompt + tool schemas + instruction.
+        # The MCP schema tax shows up here. None for codex (no per-step metrics).
+        baseline_rows = [
+            {"group": r["group"], "tokens": r["avg_prompt_baseline_tokens"]}
+            for r in rows if r["avg_prompt_baseline_tokens"]
+        ]
+        if baseline_rows:
+            fig_base = px.bar(baseline_rows, x="group", y="tokens")
+            fig_base.update_xaxes(title=" | ".join(group_by))
+            st.plotly_chart(fig_base, use_container_width=True)
+        else:
+            st.info("No per-step token metrics in the selected trials (codex trajectories lack them).")
+
+        if eff_rows:
+            st.subheader(f"Cost (USD){eff_note}")
+            fig_cost = px.bar(eff_rows, x="group", y="cost_usd", hover_data=["input_tokens", "cache_tokens", "output_tokens"])
+            fig_cost.update_xaxes(title=" | ".join(group_by))
+            st.plotly_chart(fig_cost, use_container_width=True)
+
+        if eff_rows:
+            st.subheader(f"Duration (s){eff_note}")
+            # Summed per-phase seconds across trials in the group. NOTE: trials run in
+            # parallel, so this is not wall-clock time.
+            duration_rows = []
+            for r in eff_rows:
+                duration_rows.append({"group": r["group"], "phase": "env setup", "seconds": r["env_setup_s"]})
+                duration_rows.append({"group": r["group"], "phase": "agent setup", "seconds": r["agent_setup_s"]})
+                duration_rows.append({"group": r["group"], "phase": "agent exec", "seconds": r["agent_exec_s"]})
+                duration_rows.append({"group": r["group"], "phase": "verifier", "seconds": r["verifier_s"]})
+            fig_dur = px.bar(
+                duration_rows,
+                x="group",
+                y="seconds",
+                color="phase",
+                barmode="stack",
+                category_orders={"phase": ["env setup", "agent setup", "agent exec", "verifier"]},
+            )
+            fig_dur.update_xaxes(title=" | ".join(group_by))
+            st.plotly_chart(fig_dur, use_container_width=True)
+
+            st.subheader(f"Token usage{eff_note}")
+            # n_input_tokens includes cache; uncached = input - cache. See harbor/viewer/server.py:_uncached_input.
+            token_rows = []
+            for r in eff_rows:
+                n_in = r["input_tokens"] or 0
+                n_cache = r["cache_tokens"] or 0
+                n_out = r["output_tokens"] or 0
+                token_rows.append({"group": r["group"], "kind": "input (cached)", "tokens": n_cache})
+                token_rows.append({"group": r["group"], "kind": "input (uncached)", "tokens": max(0, n_in - n_cache)})
+                token_rows.append({"group": r["group"], "kind": "output", "tokens": n_out})
+            fig_tokens = px.bar(
+                token_rows,
+                x="group",
+                y="tokens",
+                color="kind",
+                barmode="stack",
+                category_orders={"kind": ["input (cached)", "input (uncached)", "output"]},
+                color_discrete_map={
+                    "input (cached)": "#9ecae1",
+                    "input (uncached)": "#d62728",
+                    "output": "#2ca02c",
+                },
+            )
+            fig_tokens.update_xaxes(title=" | ".join(group_by))
+            st.plotly_chart(fig_tokens, use_container_width=True)
 
 with tab_trials:
     task_names = sorted({t["task"] for t in trials if t.get("task")})
@@ -310,12 +374,15 @@ with tab_trials:
         for trial_idx, t in enumerate(task_trials, start=1):
             tl = load_trial_timeline(t["job"], t["trial"], mtimes.get(t["job"], 0.0))
             label = f"{t['job']} / {t['trial']}"
-            expected_channel = VARIANT_CHANNEL.get(t["variant"])
-            channel_flags = [
-                matches_channel(m["name"], m["args"], expected_channel) if expected_channel else False
+            kinds = [
+                metrics_mod.classify_call(
+                    {"function_name": m["name"], "arguments": m["args"]},
+                    t["target"], t["channel"],
+                )
                 for m in tl["marks"]
             ]
-            for m, is_channel in zip(tl["marks"], channel_flags):
+            channel_flags = [k == "channel" for k in kinds]
+            for m, kind in zip(tl["marks"], kinds):
                 tool_call_rows.append({
                     "trial": t["trial"],
                     "variant": t["variant"],
@@ -323,17 +390,23 @@ with tab_trials:
                     "cum_tokens": m["cum_tokens"],
                     "tool": m["name"],
                     "args": json.dumps(m["args"])[:300],
-                    "channel": "✓" if is_channel else "",
+                    "kind": kind,
                 })
             table_rows.append({
                 "trial": t["trial"],
                 "job": t["job"],
                 "variant": t["variant"],
                 "model": t["model"],
-                "reward": t["reward"],
+                "tests_passed": t["tests_passed"],
+                "failed_criteria": t["failed_criteria"],
                 "errored": t["errored"],
-                "steps": tl["n_steps"],
-                "tool_calls": tl["n_tool_calls"],
+                "agent_turns": t["agent_turns"],
+                "tool_calls": t["tool_calls_total"],
+                "channel_calls": t["channel_calls"],
+                "off_channel_calls": t["off_channel_calls"],
+                "errored_calls": t["errored_calls"],
+                "channel_output_chars": t["channel_output_chars"],
+                "prompt_baseline_tokens": t["prompt_baseline_tokens"],
                 "input_tokens": t["n_input"],
                 "cache_tokens": t["n_cache"],
                 "output_tokens": t["n_output"],
@@ -404,20 +477,20 @@ with tab_trials:
                 t = meta_for.get(name, {})
                 return (
                     f"{t.get('variant', '?')} | {t.get('model', '?')} / {t.get('agent', '?')} "
-                    f"- reward={t.get('reward', 0):.2f} - {name}"
+                    f"- {'passed' if t.get('tests_passed') else 'failed'} - {name}"
                 )
 
             picked_trial = st.selectbox("Trial", trial_names, format_func=_label)
             filtered = [
                 {
                     "t_s": r["t_s"],
-                    "channel": r["channel"],
+                    "kind": r["kind"],
                     "tool": r["tool"],
                     "args": r["args"],
                     "cum_tokens": r["cum_tokens"],
                 }
                 for r in tool_call_rows
-                if r["trial"] == picked_trial and (not only_channel or r["channel"])
+                if r["trial"] == picked_trial and (not only_channel or r["kind"] == "channel")
             ]
             st.dataframe(filtered, use_container_width=True)
         else:
@@ -425,8 +498,9 @@ with tab_trials:
 
 with tab_grid:
     # Per (task, agent+model, variant) avg-tokens stacked bars, faceted by row=task, col=agent+model.
+    grid_trials = [t for t in trials if t["tests_passed"]] if passed_only else trials
     cells: dict[tuple, dict] = defaultdict(lambda: {"n_input": 0, "n_cache": 0, "n_output": 0, "count": 0})
-    for t in trials:
+    for t in grid_trials:
         am = f"{t.get('agent') or '?'} / {t.get('model') or '?'}"
         key = (t["task"], am, t["variant"])
         c = cells[key]
@@ -444,7 +518,7 @@ with tab_grid:
         grid_rows.append({"task": task, "agent_model": am, "variant": variant,
                           "kind": "output", "tokens": c["n_output"] / n})
     if not grid_rows:
-        st.info("No trial data in the selected jobs.")
+        st.info("No trial data in the selected jobs (with 'passed trials only' on, only passed trials count).")
     else:
         variant_order = sorted({r["variant"] for r in grid_rows})
         fig_grid = px.bar(
