@@ -279,7 +279,21 @@ with tab_grouped:
                        "(passed only); pass rate always covers all.")
 
         st.subheader(f"Summary (grouped by {' | '.join(group_by)})")
-        st.dataframe(rows, use_container_width=True)
+        # Averages only: comparable across groups with different trial counts.
+        # aggregate() still returns the sums (charts hover, other consumers);
+        # cost_usd stays as the one total with natural sum semantics (job spend).
+        SUMMARY_COLUMNS = [
+            "group", "total", "passed", "errored", "pass_rate",
+            "avg_agent_turns", "avg_channel_calls", "avg_off_channel_calls",
+            "avg_errored_calls", "avg_channel_output_chars", "avg_prompt_baseline_tokens",
+            "avg_cost_usd", "avg_input_tokens", "avg_cache_tokens", "avg_output_tokens",
+            "avg_env_setup_s", "avg_agent_setup_s", "avg_agent_exec_s", "avg_verifier_s",
+            "cost_usd",
+        ]
+        st.dataframe(
+            [{k: r[k] for k in SUMMARY_COLUMNS} for r in rows],
+            use_container_width=True,
+        )
 
         st.subheader("Pass rate")
         # All verifier criteria true and no trial exception. Health gate, not an
