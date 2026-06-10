@@ -5,15 +5,16 @@ What this project is: see `AGENTS.md`.
 ## Prerequisites
 
 - **Python 3.13+** (Harbor requires 3.12+; we use 3.13.7)
-- **Docker** — local execution. OrbStack works (drop-in for Docker Desktop). Only needed for the `--env docker` path; cloud sandboxes skip this.
 - **OpenRouter account** — single key for all LLM providers. https://openrouter.ai/keys
-- **Daytona account** (recommended cloud sandbox) — https://app.daytona.io. We prefer Daytona over E2B because **E2B's free tier caps sandbox lifetime at 1h** and Harbor hardcodes `timeout=86_400` (`harbor/environments/e2b.py:198`), so every E2B run fails on free tier. Daytona has no such trap.
+- **E2B account** (default sandbox) — https://e2b.dev. Set `E2B_API_KEY` in `.env`.
+- **Daytona account** (alternative cloud sandbox, `--env daytona`) — https://app.daytona.io.
+- **Docker** (alternative local sandbox, `--env docker`) — OrbStack works.
 
 ## Install
 
 ```bash
-uv sync                                  # creates .venv, installs harbor + mcp-evals
-pipx inject harbor daytona               # optional: for cloud sandbox path
+uv sync                                  # creates .venv, installs harbor[e2b] + mcp-evals
+pipx inject harbor daytona               # optional: for the --env daytona path
 ```
 
 Verify: `uv run mcp-evals run --help` and `uv run harbor --version`.
@@ -38,13 +39,15 @@ set -a; source .env; set +a
 
 Zero-cost (no LLM, just verifies Harbor + sandbox loop):
 ```bash
-harbor run -t hello-world/hello-world -a oracle --env daytona
+uv run mcp-evals run --integration apify-mcp -t tasks/apify-fetch-actor-id -a oracle -y
 ```
 
 Real LLM via OpenRouter (cents):
 ```bash
-harbor run -t hello-world/hello-world -a claude-code -m anthropic/claude-haiku-4.5 --env daytona
+uv run mcp-evals run --integration apify-mcp -t tasks/apify-fetch-actor-id -a claude-code -m anthropic/claude-haiku-4.5 -y
 ```
+
+Defaults to E2B; pass `--env docker` or `--env daytona` to switch backends.
 
 ## Running
 

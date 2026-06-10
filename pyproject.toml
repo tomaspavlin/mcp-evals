@@ -5,7 +5,7 @@ description = "Evaluate MCP servers and compare them with CLI/API/skill alternat
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "harbor>=0.13.0",
+    "harbor[e2b]>=0.13.0",
     "pydantic>=2.11.7",
     "typer>=0.16.0",
     "pyyaml>=6.0.2",

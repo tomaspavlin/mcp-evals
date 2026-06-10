@@ -23,6 +23,7 @@ class RunConfig(BaseModel):
 
     job_name: str | None = None
     integration: str | None = None
+    environment_type: str | None = None
     n_concurrent_trials: int | None = None
     n_attempts: int | None = None
     tasks: list[TaskConfig] = Field(default_factory=list)

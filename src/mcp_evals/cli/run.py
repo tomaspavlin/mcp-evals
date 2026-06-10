@@ -104,6 +104,14 @@ def run_command(
             "-n", "--n-concurrent", help="Concurrent trials.", show_default=False
         ),
     ] = None,
+    env: Annotated[
+        str | None,
+        Option(
+            "--env",
+            help="Sandbox backend (docker, daytona, e2b, ...). Overrides defaults.py.",
+            show_default=False,
+        ),
+    ] = None,
     env_file: Annotated[
         Path | None,
         Option("--env-file", help="Path to a .env file to load.", show_default=False),
@@ -149,6 +157,8 @@ def run_command(
         run.n_concurrent_trials = n_concurrent
     if n_attempts is not None:
         run.n_attempts = n_attempts
+    if env is not None:
+        run.environment_type = env
 
     if not run.integration:
         raise typer.BadParameter("--integration is required (set via flag or config)")

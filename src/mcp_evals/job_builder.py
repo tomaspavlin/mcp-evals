@@ -61,7 +61,10 @@ def build_job_config(run: RunConfig, integration: Integration) -> JobConfig:
         tasks=run.tasks,
         datasets=run.datasets,
         agents=agents,
-        environment=EnvironmentConfig(env=environment_env, **DEFAULT_ENVIRONMENT),
+        environment=EnvironmentConfig(
+            env=environment_env,
+            **{**DEFAULT_ENVIRONMENT, **({"type": run.environment_type} if run.environment_type else {})},
+        ),
         verifier=VerifierConfig(
             env={"EVAL_VARIANT": integration.eval_variant, **verifier_env}
         ),
