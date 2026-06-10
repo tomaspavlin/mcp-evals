@@ -114,7 +114,8 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
         details = read_json(trial_dir / "verifier" / "reward-details.json")
         passed = metrics_mod.tests_passed(details)
         traj = read_json(trial_dir / "agent" / "trajectory.json") or {}
-        trial_metrics, _ = metrics_mod.compute_trial_metrics(traj, channel, target)
+        trial_metrics, per_call = metrics_mod.compute_trial_metrics(traj, channel, target)
+        values = metrics_mod.call_values(per_call)
 
         def _secs(ti):
             if ti is None or ti.started_at is None or ti.finished_at is None:
@@ -135,6 +136,9 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
             "tests_passed": bool(passed) and not errored,
             "failed_criteria": ", ".join(metrics_mod.failed_criteria(details)),
             "errored": errored,
+            "exception": tr.exception_info.exception_type if tr.exception_info else "",
+            "escape_call_values": values["escape_call_values"],
+            "errored_call_values": values["errored_call_values"],
             "n_input": n_in or 0,
             "n_cache": n_cache or 0,
             "n_output": n_out or 0,
@@ -254,6 +258,9 @@ with tab_grouped:
         eff_trials = [t for t in trials if t["tests_passed"]] if passed_only else trials
         eff_rows = aggregate(eff_trials, group_by) if eff_trials else []
         eff_note = " (passed trials only)" if passed_only else ""
+        if passed_only:
+            st.caption(f"Efficiency charts cover {len(eff_trials)}/{len(trials)} trials "
+                       "(passed only); pass rate always covers all.")
 
         st.subheader(f"Summary (grouped by {' | '.join(group_by)})")
         st.dataframe(rows, use_container_width=True)
@@ -281,6 +288,23 @@ with tab_grouped:
             fig_act = px.bar(activity_rows, x="group", y="value", color="metric", barmode="group")
             fig_act.update_xaxes(title=" | ".join(group_by))
             st.plotly_chart(fig_act, use_container_width=True)
+
+        # The calls behind the off-channel / errored counts, plus failed tests
+        # and trial exceptions. All selected trials, not just eff_trials: a
+        # failed trial's escapes are exactly what you want to inspect.
+        flagged = []
+        for t in trials:
+            for v in t["escape_call_values"]:
+                flagged.append({"trial": t["trial"], "job": t["job"], "what": "escape", "value": v})
+            for v in t["errored_call_values"]:
+                flagged.append({"trial": t["trial"], "job": t["job"], "what": "errored call", "value": v})
+            if t["failed_criteria"]:
+                flagged.append({"trial": t["trial"], "job": t["job"], "what": "failed test", "value": t["failed_criteria"]})
+            if t["exception"]:
+                flagged.append({"trial": t["trial"], "job": t["job"], "what": "exception", "value": t["exception"]})
+        if flagged:
+            st.subheader("Flagged: escapes, errored calls, failed tests, exceptions")
+            st.dataframe(flagged, use_container_width=True)
 
         st.subheader("Prompt baseline tokens (avg first-step prompt)")
         # Fixed context overhead: system prompt + tool schemas + instruction.
@@ -400,6 +424,9 @@ with tab_trials:
                 "tests_passed": t["tests_passed"],
                 "failed_criteria": t["failed_criteria"],
                 "errored": t["errored"],
+                "exception": t["exception"],
+                "escape_calls_detail": " | ".join(t["escape_call_values"]),
+                "errored_calls_detail": " | ".join(t["errored_call_values"]),
                 "agent_turns": t["agent_turns"],
                 "tool_calls": t["tool_calls_total"],
                 "channel_calls": t["channel_calls"],

@@ -127,6 +127,16 @@ class TestComputeTrialMetrics:
             "prompt_baseline_tokens": 12970,
         }
         assert [c["kind"] for c in per_call] == ["channel", "escape", "workspace"]
+        assert per_call[1]["output_head"] == "Error: blocked"
+
+    def test_call_values(self):
+        from mcp_evals.metrics import call_values
+        _, per_call = compute_trial_metrics(self._trajectory(), "mcp", "apify")
+        values = call_values(per_call)
+        assert values["escape_call_values"] == ["bash: curl https://api.apify.com/v2/acts/x"]
+        assert values["errored_call_values"] == [
+            "bash: curl https://api.apify.com/v2/acts/x -> Error: blocked"
+        ]
 
     def test_codex_missing_step_metrics(self):
         traj = {

@@ -213,6 +213,7 @@ def compute_trial_metrics(
                 "kind": classify_call(tc, target, channel),
                 "errored": call_errored(output) if output else False,
                 "output_chars": len(output),
+                "output_head": output[:160],
             })
 
     metrics = {
@@ -227,6 +228,26 @@ def compute_trial_metrics(
         "prompt_baseline_tokens": prompt_baseline,
     }
     return metrics, per_call
+
+
+def call_brief(c: dict) -> str:
+    """One-line human-readable form of a per_call row: tool name + command/args."""
+    args = c.get("arguments") or {}
+    cmd = ((args.get("command") or args.get("cmd")) or "").strip()
+    detail = cmd or ", ".join(f"{k}={v}" for k, v in list(args.items())[:2])
+    return f"{c['name']}: {detail[:100]}" if detail else c["name"]
+
+
+def call_values(per_call: list[dict]) -> dict[str, list[str]]:
+    """The offending calls behind the off_channel_calls / errored_calls counts."""
+    return {
+        "escape_call_values": [call_brief(c) for c in per_call if c["kind"] == "escape"],
+        "errored_call_values": [
+            f"{call_brief(c)} -> {c['output_head'][:80]}"
+            for c in per_call
+            if c["errored"]
+        ],
+    }
 
 
 def tests_passed(reward_details: dict | None) -> bool | None:

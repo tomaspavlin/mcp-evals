@@ -60,7 +60,7 @@ If a run fails with `FileExistsError` (job dir already exists), remove `jobs/<jo
 
 ## Integrations
 
-`integrations/<name>/` bundles the (MCP servers | skills | instruction append | verifier env) tuple that distinguishes a tool-access strategy for the same underlying task. Files: `integration.yaml` + sibling `instruction.md` + optional `skills/<skill-name>/SKILL.md` + optional `setup.sh` (all auto-discovered by the loader). `setup.sh` runs in the sandbox after env start and before the agent - use it for pre-auth (e.g. `apify login --token "$APIFY_TOKEN"`) so CLI/skill integrations match the implicit auth MCP gets. `environment_env` goes into the container's persistent env (visible to every exec, including the agent); `setup_env` is injected only into the setup.sh exec, so setup-time secrets don't sit in the container env where an agent could `echo $TOKEN` them into the trajectory. To add an integration, drop a new directory; reference it via `integration:` in a `RunConfig`.
+`integrations/<name>/` bundles the (MCP servers | skills | instruction append | verifier env) tuple that distinguishes a tool-access strategy for the same underlying task. Files: `integration.yaml` + sibling `instruction.md` + optional `skills/<skill-name>/SKILL.md` + optional `setup.sh` (all auto-discovered by the loader). `setup.sh` runs in the sandbox after env start and before the agent, with `environment_env` resolved in scope - use it for pre-auth (e.g. `apify login --token "$APIFY_TOKEN"`) so CLI/skill integrations match the implicit auth MCP gets. To add an integration, drop a new directory; reference it via `integration:` in a `RunConfig`.
 
 ## Harbor patches
 
