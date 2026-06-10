@@ -4,9 +4,11 @@
 
 Harbor's codex agent (`harbor/agents/installed/codex.py`, `_build_register_mcp_servers_command`) writes only `command`/`url` to `$CODEX_HOME/config.toml`, never `env`. Codex CLI does support `env = { KEY = "value" }` per [codex config reference](https://developers.openai.com/codex/config-reference), so MCP child processes never receive secrets we declared via task `[environment.env]`.
 
-Symptom on `apify-fetch-actor-id` with codex: MCP startup fails with `Broken pipe (os error 32)` because `apify-mcp-proxy.sh` exits on `${APIFY_TOKEN:?...}`. See `jobs/apify-fetch-actor-id-codex-gpt5mini-eval/`.
+Workaround: `src/mcp_evals/_patches/codex_mcp_env.py` monkey-patches `_build_register_mcp_servers_command` to emit an `env = { KEY = "${KEY}" }` block per MCP server, sourced from a `MCP_SERVER_ENV` mapping. Heredoc with unquoted delimiter so shell substitution happens at exec time in docker (same pattern codex.py:766-770 uses for `OPENAI_BASE_URL`). Remove patch and import in `src/mcp_evals/__init__.py` once harbor lands the fix. Upstream PR still TODO.
 
-Fix: fork harbor at `../harbor`, extend `_build_register_mcp_servers_command` to emit an `env = { ... }` block from `server.env`. Install harbor from the clone. Upstream PR.
+## Codex agent: MCP tool-name prefix stripped (verifier convention gap)
+
+`tasks/apify-fetch-actor-id/tests/check.py` originally matched `function_name.startswith("apify_")` to detect MCP usage. Claude-code/opencode keep the server prefix (`apify_fetch-actor-details`); codex strips it and normalizes hyphens to underscores (`fetch_actor_details`). Fixed by switching the channel detector to an allowlist of normalized apify MCP tool names (`APIFY_MCP_TOOLS`). Extend `APIFY_MCP_TOOLS` when surfacing new apify tools in the eval.
 
 ## E2B sandbox timeout hardcoded to 24h (Harbor gap)
 

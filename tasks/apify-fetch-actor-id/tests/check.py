@@ -17,11 +17,34 @@ def _tool_calls() -> list[dict]:
     return collect_tool_calls(data) if data else []
 
 
+# Apify MCP tool allowlist for harnesses that strip the server prefix from
+# tool names (codex: "fetch_actor_details"). Claude-code/opencode preserve
+# the prefix ("apify_fetch-actor-details") and are caught by the apify_
+# prefix check directly; this list only needs to cover the prefix-strippers.
+# Extend when surfacing new apify tools in the eval.
+APIFY_MCP_TOOLS = {
+    "fetch-actor-details",
+    "search-actors",
+    "call-actor",
+    "add-actor",
+    "fetch-apify-docs",
+    "search-apify-docs",
+}
+
+
+def _normalize_mcp_tool(name: str) -> str:
+    for prefix in ("apify_", "apify-"):
+        if name.startswith(prefix):
+            name = name[len(prefix):]
+            break
+    return name.replace("_", "-")
+
+
 def _matches_channel(tc: dict, channel: str) -> bool:
     name = tc.get("function_name") or ""
     cmd = ((tc.get("arguments") or {}).get("command") or "").lstrip()
     if channel == "mcp":
-        return name.startswith("apify_")
+        return name.startswith("apify_") or _normalize_mcp_tool(name) in APIFY_MCP_TOOLS
     if channel == "cli":
         return name == "bash" and cmd.startswith("apify ")
     if channel == "mcpc":
