@@ -12,6 +12,8 @@ What this project is: see `AGENTS.md`.
 
 ## Install
 
+For development in this repo:
+
 ```bash
 uv sync                                  # creates .venv, installs harbor[e2b] + mcp-evals
 pipx inject harbor daytona               # optional: for the --env daytona path

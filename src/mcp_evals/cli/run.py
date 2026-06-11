@@ -10,7 +10,7 @@ from rich.console import Console
 from typer import Option
 
 from mcp_evals.config import RunAgentConfig, RunConfig, load_run_config
-from mcp_evals.integrations.loader import load_integration
+from mcp_evals.integrations.loader import INTEGRATIONS_DIR, load_integration
 from mcp_evals.integrations.materialize import (
     discover_dataset_task_paths,
     materialize_for_tasks,
@@ -35,6 +35,14 @@ def run_command(
         Option(
             "--integration",
             help="Integration name (overrides the value in the config).",
+            show_default=False,
+        ),
+    ] = None,
+    integrations_dir: Annotated[
+        Path | None,
+        Option(
+            "--integrations-dir",
+            help="Directory containing integrations (default: ./integrations).",
             show_default=False,
         ),
     ] = None,
@@ -94,6 +102,15 @@ def run_command(
         str | None,
         Option("--job-name", help="Override RunConfig.job_name.", show_default=False),
     ] = None,
+    jobs_dir: Annotated[
+        Path | None,
+        Option(
+            "-o",
+            "--jobs-dir",
+            help="Directory to store job results (default: ./jobs).",
+            show_default=False,
+        ),
+    ] = None,
     n_attempts: Annotated[
         int | None,
         Option("-k", "--n-attempts", help="Attempts per trial.", show_default=False),
@@ -133,6 +150,8 @@ def run_command(
 
     if integration is not None:
         run.integration = integration
+    if integrations_dir is not None:
+        run.integrations_dir = integrations_dir
     if agent is not None:
         run.agents = [RunAgentConfig(name=agent, model_name=model)]
     elif model is not None:
@@ -153,6 +172,8 @@ def run_command(
         )
     if job_name is not None:
         run.job_name = job_name
+    if jobs_dir is not None:
+        run.jobs_dir = jobs_dir
     if n_concurrent is not None:
         run.n_concurrent_trials = n_concurrent
     if n_attempts is not None:
@@ -172,7 +193,9 @@ def run_command(
     if run.job_name is None and config_path is not None:
         run.job_name = config_path.stem
 
-    integ = load_integration(run.integration)
+    integ = load_integration(
+        run.integration, root=run.integrations_dir or INTEGRATIONS_DIR
+    )
 
     if integ.environment_dir is not None:
         task_paths = [tc.path for tc in run.tasks if tc.path is not None]

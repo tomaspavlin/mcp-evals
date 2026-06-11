@@ -48,11 +48,11 @@ uv run mcp-evals run --integration apify-mcp -a oracle \
   --dataset-path tasks --task-name 'apify-*' --exclude-task-name apify-mcp-connected -y
 ```
 
-Flags: `--integration NAME`, `-a/--agent NAME`, `-m/--model MODEL` (omit for oracle), `-t/--task PATH` (repeatable), `-p/--dataset-path PATH`, `--task-name GLOB` (repeatable), `--exclude-task-name GLOB` (repeatable), `--job-name`, `-k/--n-attempts`, `-n/--n-concurrent`, `--env {docker,daytona,e2b,...}` (sandbox backend, default e2b), `--env-file`, `-y`. Each flag overrides whatever's in `-c`.
+Flags: `--integration NAME`, `--integrations-dir PATH` (default `./integrations`), `-a/--agent NAME`, `-m/--model MODEL` (omit for oracle), `-t/--task PATH` (repeatable), `-p/--dataset-path PATH`, `--task-name GLOB` (repeatable), `--exclude-task-name GLOB` (repeatable), `--job-name`, `-o/--jobs-dir PATH` (default `./jobs`), `-k/--n-attempts`, `-n/--n-concurrent`, `--env {docker,daytona,e2b,...}` (sandbox backend, default e2b), `--env-file`, `-y`. Each flag overrides whatever's in `-c`. Eval definitions can live in an external repo: see "Running against an external eval directory" in `README.md` (covers `--integrations-dir`, `-o/--jobs-dir`, and yaml-relative `skills:` globs).
 
 ## Configs
 
-New schema (our `RunConfig`, ~8 lines): `job_name`, `integration`, `tasks` / `datasets`, `agents` (just `name` + `model_name` + optional `kwargs`). Everything else - environment, mcp_servers, skills, instruction append, verifier env, default agent kwargs, concurrency - comes from the named integration + `src/mcp_evals/defaults.py`. See `configs/apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml` for the canonical example.
+New schema (our `RunConfig`, ~8 lines): `job_name`, `integration`, `tasks` / `datasets`, `agents` (just `name` + `model_name` + optional `kwargs`), optional `integrations_dir` / `jobs_dir` for eval definitions living outside this repo. Everything else - environment, mcp_servers, skills, instruction append, verifier env, default agent kwargs, concurrency - comes from the named integration + `src/mcp_evals/defaults.py`. See `configs/apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml` for the canonical example.
 
 Naming: `<dataset>-<harness>-<model>-<tool>-<purpose>.yaml`; `<tool>` is `mcp`, `cli`, `skill`, or `mcpc` (shell-driven MCP via [`@apify/mcpc`](https://github.com/apify/mcpc)); `<purpose>` is `eval`. Keep secrets in `.env`, never in yaml.
 

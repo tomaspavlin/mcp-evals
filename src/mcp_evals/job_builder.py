@@ -69,6 +69,8 @@ def build_job_config(run: RunConfig, integration: Integration) -> JobConfig:
         kwargs["n_attempts"] = run.n_attempts
     if run.job_name is not None:
         kwargs["job_name"] = run.job_name
+    if run.jobs_dir is not None:
+        kwargs["jobs_dir"] = run.jobs_dir
 
     return JobConfig(
         n_concurrent_trials=run.n_concurrent_trials or DEFAULT_N_CONCURRENT_TRIALS,
