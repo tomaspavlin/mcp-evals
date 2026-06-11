@@ -23,12 +23,6 @@ Flags: `-p/--port` (default 8501), `--host` (default localhost), `--no-browser`.
 The command prefers this directory's `.venv/bin/streamlit`, falls back to
 `streamlit` on PATH, and passes the jobs dir via `MCP_EVALS_JOBS_DIR`.
 
-```bash
-apps/dashboard/.venv/bin/streamlit run apps/dashboard/app.py
-```
-
-Opens at http://localhost:8501. Pick jobs in the sidebar.
-
 ## Layout
 
 - `app.py` - single-page Streamlit entry point. Loads `src/mcp_evals/metrics.py` by file
