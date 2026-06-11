@@ -126,10 +126,12 @@ harbor view tasks   # task browser
 Project-specific plots (MCP vs CLI vs skill comparisons, etc.) live in a custom app:
 
 ```bash
-apps/dashboard/.venv/bin/streamlit run apps/dashboard/app.py
+mcp-evals dashboard                # ./jobs
+mcp-evals dashboard evals/jobs     # any other jobs dir, e.g. from an app repo
 ```
 
-See `apps/dashboard/README.md` for first-time setup.
+Flags: `-p/--port` (default 8501), `--host`, `--no-browser`. See
+`apps/dashboard/README.md` for first-time setup (dedicated streamlit venv).
 
 ## Known limitations
 

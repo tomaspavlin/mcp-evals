@@ -1,5 +1,6 @@
 import typer
 
+from mcp_evals.cli.dashboard import dashboard_command
 from mcp_evals.cli.materialize import materialize_command
 from mcp_evals.cli.run import run_command
 
@@ -19,3 +20,7 @@ app.command(
     name="materialize",
     help="Copy an integration's environment/ into each task's environment/ dir.",
 )(materialize_command)
+app.command(
+    name="dashboard",
+    help="Launch the streamlit dashboard against a jobs dir.",
+)(dashboard_command)

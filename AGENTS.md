@@ -72,7 +72,7 @@ Trajectory-derived metrics (channel/escape call classification, errored calls, `
 
 ## Dashboard
 
-Custom Streamlit app at `apps/dashboard/` for project-specific plots over `jobs/`. Reads via Harbor's `JobScanner` so schema parsing stays in sync, and loads `src/mcp_evals/metrics.py` by file path for trial metrics. Complements `harbor view jobs`, does not replace it. See `apps/dashboard/README.md` for setup and run instructions.
+Custom Streamlit app at `apps/dashboard/` for project-specific plots over `jobs/`. Reads via Harbor's `JobScanner` so schema parsing stays in sync, and loads `src/mcp_evals/metrics.py` by file path for trial metrics. Complements `harbor view jobs`, does not replace it. Launch with `mcp-evals dashboard [JOBS_DIR]` (default `./jobs`; flags `-p/--port`, `--host`, `--no-browser`) - resolves the jobs dir, sets `MCP_EVALS_JOBS_DIR`, and execs streamlit from `apps/dashboard/.venv` (or PATH). See `apps/dashboard/README.md` for setup.
 
 ## Project docs
 

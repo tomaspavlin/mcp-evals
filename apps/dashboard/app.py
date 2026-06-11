@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -11,7 +12,8 @@ import streamlit as st
 from harbor.viewer.scanner import JobScanner
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-JOBS_DIR = REPO_ROOT / "jobs"
+# Set by `mcp-evals dashboard` so external projects can point at their own jobs dir.
+JOBS_DIR = Path(os.environ.get("MCP_EVALS_JOBS_DIR", REPO_ROOT / "jobs")).expanduser().resolve()
 # Fallback parse for jobs predating MCP_EVALS_INTEGRATION in verifier env.
 KNOWN_INTEGRATION_TYPES = {"mcp", "cli", "skill", "mcpc"}
 GROUP_KEYS = ["job", "integration", "integration_type", "integration_target", "task", "agent", "model"]
