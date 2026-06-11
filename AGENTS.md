@@ -48,7 +48,7 @@ uv run mcp-evals run --integration apify-mcp -a oracle \
   --dataset-path tasks --task-name 'apify-*' --exclude-task-name apify-mcp-connected -y
 ```
 
-Flags: `--integration NAME`, `--integrations-dir PATH` (default `./integrations`), `-a/--agent NAME`, `-m/--model MODEL` (omit for oracle), `-t/--task PATH` (repeatable), `-p/--dataset-path PATH`, `--task-name GLOB` (repeatable), `--exclude-task-name GLOB` (repeatable), `--job-name`, `-o/--jobs-dir PATH` (default `./jobs`), `-k/--n-attempts`, `-n/--n-concurrent`, `--env {docker,daytona,e2b,...}` (sandbox backend, default e2b), `--env-file`, `-y`. Each flag overrides whatever's in `-c`. Eval definitions can live in an external repo: see "Running against an external eval directory" in `README.md` (covers `--integrations-dir`, `-o/--jobs-dir`, and yaml-relative `skills:` globs).
+Flags: `--integration NAME`, `--integrations-dir PATH` (default `./integrations`), `-a/--agent NAME`, `-m/--model MODEL` (omit for oracle), `-t/--task PATH` (repeatable), `-p/--dataset-path PATH`, `--task-name GLOB` (repeatable), `--exclude-task-name GLOB` (repeatable), `--job-name`, `-o/--jobs-dir PATH` (default `./jobs`), `-k/--n-attempts`, `-n/--n-concurrent`, `--env {docker,daytona,e2b,...}` (sandbox backend, default e2b), `--env-file`, `-y`. Each flag overrides whatever's in `-c`. Eval definitions can live in an external repo: see "Usage" in `README.md` (covers `--integrations-dir`, `-o/--jobs-dir`, and yaml-relative `skills:` globs).
 
 ## Configs
 
