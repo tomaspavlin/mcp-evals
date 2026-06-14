@@ -1,5 +1,14 @@
 version = "1.0"
 
+[task]
+name = "mcp-evals/apify-fetch-actor-id"
+description = "Look up an Apify Actor's opaque ID by its slug."
+
+[metadata]
+difficulty = "easy"
+category = "lookup"
+tags = ["read-only", "single-call"]
+
 [verifier]
 timeout_sec = 60.0
 

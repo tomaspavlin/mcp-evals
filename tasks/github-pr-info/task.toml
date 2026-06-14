@@ -1,5 +1,14 @@
 version = "1.0"
 
+[task]
+name = "mcp-evals/github-pr-info"
+description = "Report a GitHub PR's title, author, and merge status; LLM judge grades the answer."
+
+[metadata]
+difficulty = "easy"
+category = "lookup"
+tags = ["read-only"]
+
 [verifier]
 timeout_sec = 300.0
 
