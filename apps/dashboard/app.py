@@ -144,6 +144,9 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
         model_name = None
         if tr.config and tr.config.agent:
             model_name = tr.config.agent.model_name
+        reward = None
+        if tr.verifier_result and tr.verifier_result.rewards:
+            reward = tr.verifier_result.rewards.get("reward")
         out.append({
             "job": job_name,
             "trial": trial_name,
@@ -154,6 +157,10 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
             "task": tr.task_name,
             "agent": tr.agent_info.name if tr.agent_info else None,
             "model": model_name,
+            "trial_uri": tr.trial_uri,
+            "started_at": tr.started_at,
+            "finished_at": tr.finished_at,
+            "reward": reward,
             "tests_passed": bool(passed) and not errored,
             "failed_criteria": ", ".join(metrics_mod.failed_criteria(details)),
             "errored": errored,
@@ -293,7 +300,7 @@ if not trials:
     st.warning("Selected jobs have no trial results yet.")
     st.stop()
 
-tab_grouped, tab_trials, tab_grid = st.tabs(["Grouped", "Trial details", "Token grid"])
+tab_grouped, tab_trials, tab_grid = st.tabs(["Grouped", "Trials", "Token grid"])
 
 with tab_grouped:
     group_by = st.multiselect("Group by", GROUP_KEYS, default=["trial"])
@@ -586,33 +593,199 @@ with tab_trials:
             fig_tl.update_xaxes(title=x_axis)
             fig_tl.update_yaxes(title="cumulative tokens")
             st.plotly_chart(fig_tl, use_container_width=True)
-        st.subheader("Tool calls")
-        if tool_call_rows:
-            meta_for = {t["trial"]: t for t in picked_trials}
-            trial_names = sorted({r["trial"] for r in tool_call_rows})
+        st.subheader("Trial details")
 
-            def _label(name: str) -> str:
-                t = meta_for.get(name, {})
-                return (
-                    f"{t.get('integration_type', '?')} | {t.get('model', '?')} / {t.get('agent', '?')} "
-                    f"- {'passed' if t.get('tests_passed') else 'failed'} - {name}"
-                )
+        def _stacked_bar(segments: list[dict], total_label: str) -> go.Figure:
+            fig = go.Figure()
+            for s in segments:
+                if (s["value"] or 0) <= 0:
+                    continue
+                fig.add_trace(go.Bar(
+                    y=[""], x=[s["value"]], name=s["label"],
+                    marker_color=s["color"], orientation="h",
+                    hovertemplate=f"{s['label']}: %{{x:,.2f}}<extra></extra>",
+                ))
+            fig.update_layout(
+                barmode="stack",
+                height=130,
+                margin=dict(l=8, r=8, t=28, b=8),
+                title=dict(text=total_label, x=0, font=dict(size=12)),
+                legend=dict(orientation="h", y=-0.3),
+                xaxis=dict(showgrid=False, zeroline=False),
+                yaxis=dict(visible=False),
+            )
+            return fig
 
-            picked_trial = st.selectbox("Trial", trial_names, format_func=_label)
-            filtered = [
-                {
-                    "t_s": r["t_s"],
-                    "kind": r["kind"],
-                    "tool": r["tool"],
-                    "args": r["args"],
-                    "cum_tokens": r["cum_tokens"],
-                }
-                for r in tool_call_rows
-                if r["trial"] == picked_trial and (not only_channel or r["kind"] == "channel")
+        def _kv_row(label: str, value) -> dict:
+            return {"metric": label, "value": "" if value is None else value}
+
+        def _fmt_dt(dt) -> str:
+            return dt.strftime("%Y-%m-%d %H:%M:%S") if dt else ""
+
+        def _render_trial_details(t: dict) -> None:
+            verdict = "pass" if t["tests_passed"] else ("error" if t["errored"] else "fail")
+            agent = t.get("agent") or "?"
+            model = t.get("model") or "?"
+            integration = t.get("integration") or "?"
+            task = t.get("task") or "?"
+            trial_path = t.get("trial_uri") or str(JOBS_DIR / t["job"] / t["trial"])
+            if trial_path.startswith("file://"):
+                trial_path = trial_path[7:]
+
+            cached = t["n_cache"] or 0
+            input_tot = t["n_input"] or 0
+            uncached = max(0, input_tot - cached)
+            output = t["n_output"] or 0
+            total_toks = input_tot + output
+            phase_s = t["t_env_setup"] + t["t_agent_setup"] + t["t_agent_exec"] + t["t_verifier"]
+
+            header_lines = [
+                f"**Trial:** `{t['trial']}`",
+                f"**Job:** `{t['job']}`",
+                f"**Task:** `{task}`",
+                f"**Integration:** `{integration}`",
+                f"**Agent:** {agent}",
+                f"**Model:** {model}",
+                f"**Verdict:** {verdict}",
+                f"**Path:** `{trial_path}`",
             ]
-            st.dataframe(filtered, use_container_width=True)
+            st.markdown("  \n".join(header_lines))
+
+            st.plotly_chart(
+                _stacked_bar(
+                    [
+                        {"label": "cached", "value": cached, "color": "#9ca3af"},
+                        {"label": "uncached", "value": uncached, "color": "#6b7280"},
+                        {"label": "output", "value": output, "color": "#374151"},
+                    ],
+                    f"Tokens · {total_toks:,}",
+                ),
+                use_container_width=True,
+            )
+            st.plotly_chart(
+                _stacked_bar(
+                    [
+                        {"label": "env setup", "value": t["t_env_setup"], "color": "#9ca3af"},
+                        {"label": "agent setup", "value": t["t_agent_setup"], "color": "#6b7280"},
+                        {"label": "agent exec", "value": t["t_agent_exec"], "color": "#4b5563"},
+                        {"label": "verifier", "value": t["t_verifier"], "color": "#374151"},
+                    ],
+                    f"Timing · {phase_s:.1f}s",
+                ),
+                use_container_width=True,
+            )
+
+            tab_calls, tab_traj, tab_info = st.tabs(["Tool calls", "Trajectory", "Details"])
+
+            with tab_calls:
+                filtered = [
+                    {"t_s": r["t_s"], "kind": r["kind"], "tool": r["tool"],
+                     "args": r["args"], "cum_tokens": r["cum_tokens"]}
+                    for r in tool_call_rows
+                    if r["trial"] == t["trial"] and (not only_channel or r["kind"] == "channel")
+                ]
+                st.caption(f"{len(filtered)} call(s)")
+                if filtered:
+                    st.dataframe(filtered, use_container_width=True)
+                else:
+                    st.info("No tool calls recorded.")
+
+            with tab_traj:
+                tl = load_trial_timeline(t["job"], t["trial"], mtimes.get(t["job"], 0.0))
+                if not tl["line"]:
+                    st.info("No trajectory.json found for this trial.")
+                else:
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(
+                        x=[r["t"] for r in tl["line"]],
+                        y=[r["cum_tokens"] for r in tl["line"]],
+                        mode="lines",
+                        name="cumulative tokens",
+                        line=dict(color="#4b5563"),
+                        hovertemplate="%{x:.1f}s<br>%{y:,} tokens<extra></extra>",
+                    ))
+                    kinds = [
+                        metrics_mod.classify_call(
+                            {"function_name": m["name"], "arguments": m["args"]},
+                            t["integration_target"], t["channel"],
+                        )
+                        for m in tl["marks"]
+                    ]
+                    if tl["marks"]:
+                        fig.add_trace(go.Scatter(
+                            x=[m["t"] for m in tl["marks"]],
+                            y=[m["cum_tokens"] for m in tl["marks"]],
+                            mode="markers",
+                            name="tool calls",
+                            marker=dict(
+                                size=9,
+                                color=["#10b981" if k == "channel" else "#f59e0b" for k in kinds],
+                                line=dict(color="#111827", width=0.5),
+                            ),
+                            customdata=[[m["name"], json.dumps(m["args"])[:300], k]
+                                        for m, k in zip(tl["marks"], kinds)],
+                            hovertemplate=("%{x:.1f}s<br>%{y:,} tokens<br>"
+                                           "<b>%{customdata[0]}</b> (%{customdata[2]})<br>"
+                                           "%{customdata[1]}<extra></extra>"),
+                        ))
+                    fig.update_xaxes(title="seconds")
+                    fig.update_yaxes(title="cumulative tokens")
+                    fig.update_layout(height=360, margin=dict(l=8, r=8, t=24, b=8))
+                    st.plotly_chart(fig, use_container_width=True)
+                    st.caption(f"{tl['n_steps']} step(s) · {tl['n_tool_calls']} tool call(s)")
+
+            with tab_info:
+                if t["exception"]:
+                    st.error(f"Exception: {t['exception']}")
+                if t["failed_criteria"]:
+                    st.warning(f"Failed criteria: {t['failed_criteria']}")
+                if t["escape_call_values"]:
+                    st.caption("Off-channel calls: " + " | ".join(t["escape_call_values"]))
+                if t["errored_call_values"]:
+                    st.caption("Errored calls: " + " | ".join(t["errored_call_values"]))
+
+                duration_s = None
+                if t["started_at"] and t["finished_at"]:
+                    duration_s = (t["finished_at"] - t["started_at"]).total_seconds()
+                cache_rate = (cached / input_tot) if input_tot else None
+
+                kv = [
+                    _kv_row("verdict", verdict),
+                    _kv_row("reward", "" if t.get("reward") is None else f"{t['reward']:.2f}"),
+                    _kv_row("cost ($)", f"{t['cost_usd']:.4f}"),
+                    _kv_row("started_at", _fmt_dt(t["started_at"])),
+                    _kv_row("finished_at", _fmt_dt(t["finished_at"])),
+                    _kv_row("duration (s)", "" if duration_s is None else f"{duration_s:.1f}"),
+                    _kv_row("env setup (s)", f"{t['t_env_setup']:.1f}"),
+                    _kv_row("agent setup (s)", f"{t['t_agent_setup']:.1f}"),
+                    _kv_row("agent exec (s)", f"{t['t_agent_exec']:.1f}"),
+                    _kv_row("verifier (s)", f"{t['t_verifier']:.1f}"),
+                    _kv_row("input tokens", f"{input_tot:,}"),
+                    _kv_row("cached tokens", f"{cached:,}"),
+                    _kv_row("uncached input tokens", f"{uncached:,}"),
+                    _kv_row("output tokens", f"{output:,}"),
+                    _kv_row("cache hit rate", "" if cache_rate is None else f"{cache_rate:.1%}"),
+                    _kv_row("prompt baseline tokens",
+                            "" if t["prompt_baseline_tokens"] in (None, 0) else f"{t['prompt_baseline_tokens']:,}"),
+                    _kv_row("agent turns", t["agent_turns"]),
+                    _kv_row("tool calls (total)", t["tool_calls_total"]),
+                    _kv_row("channel calls", t["channel_calls"]),
+                    _kv_row("off-channel calls", t["off_channel_calls"]),
+                    _kv_row("errored calls", t["errored_calls"]),
+                    _kv_row("channel output chars", f"{t['channel_output_chars']:,}"),
+                ]
+                st.dataframe(kv, hide_index=True, use_container_width=True, height=min(36 + 35 * len(kv), 600))
+
+        if not picked_trials:
+            st.info("Pick at least one trial above.")
         else:
-            st.info("No tool calls recorded for trials of this task.")
+            trial_options = [t["trial"] for t in picked_trials]
+            by_name = {t["trial"]: t for t in picked_trials}
+            name = st.segmented_control(
+                "Inspect", trial_options, selection_mode="single", default=trial_options[0]
+            )
+            if name:
+                _render_trial_details(by_name[name])
 
 with tab_grid:
     # Per (task, agent+model, integration_type) avg-tokens stacked bars, faceted by row=task, col=agent+model.
