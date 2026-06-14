@@ -1,0 +1,16 @@
+version = "1.0"
+
+[task]
+name = "mcp-evals/apify-actor-popular-comparison"
+description = "Pick the more-popular of two Actors by monthly-users statistic."
+
+[metadata]
+difficulty = "easy"
+category = "metadata-lookup"
+tags = ["read-only", "compare"]
+
+[verifier]
+timeout_sec = 60.0
+
+[agent]
+timeout_sec = 300.0

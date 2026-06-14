@@ -1,0 +1,16 @@
+version = "1.0"
+
+[task]
+name = "mcp-evals/apify-actor-search-by-criteria"
+description = "Find an Apify Actor matching publisher, category, and name-substring filters."
+
+[metadata]
+difficulty = "easy"
+category = "actor-discovery"
+tags = ["read-only", "search"]
+
+[verifier]
+timeout_sec = 60.0
+
+[agent]
+timeout_sec = 300.0
