@@ -4,6 +4,7 @@ import os
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 
 import plotly.express as px
 import plotly.graph_objects as go
@@ -147,6 +148,7 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
         reward = None
         if tr.verifier_result and tr.verifier_result.rewards:
             reward = tr.verifier_result.rewards.get("reward")
+        model_info = tr.agent_info.model_info if tr.agent_info else None
         out.append({
             "job": job_name,
             "trial": trial_name,
@@ -157,6 +159,9 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
             "task": tr.task_name,
             "agent": tr.agent_info.name if tr.agent_info else None,
             "model": model_name,
+            "source": tr.source,
+            "model_provider": model_info.provider if model_info else None,
+            "model_name_short": model_info.name if model_info else None,
             "trial_uri": tr.trial_uri,
             "started_at": tr.started_at,
             "finished_at": tr.finished_at,
@@ -285,6 +290,10 @@ with st.sidebar.container(height=320):
         if st.checkbox(f"{j} ({trial_counts[j]})", value=j in default_jobs, key=f"job_cb_{j}")
     ]
 selected = sorted(selected, key=all_jobs.index)
+harbor_view_base = st.sidebar.text_input(
+    "Harbor view base URL", value="http://127.0.0.1:8080",
+    help="Base URL of `harbor view jobs`. Used to link trials to their detail page.",
+).rstrip("/")
 if not selected:
     st.info("Pick at least one job in the sidebar.")
     st.stop()
@@ -639,6 +648,17 @@ with tab_trials:
             total_toks = input_tot + output
             phase_s = t["t_env_setup"] + t["t_agent_setup"] + t["t_agent_exec"] + t["t_verifier"]
 
+            source_seg = t.get("source") or "_"
+            agent_seg = t.get("agent") or "_"
+            provider_seg = t.get("model_provider") or "_"
+            model_seg = t.get("model_name_short") or t.get("model") or "_"
+            harbor_url = (
+                f"{harbor_view_base}/jobs/{quote(t['job'], safe='')}/tasks/"
+                f"{quote(source_seg, safe='')}/{quote(agent_seg, safe='')}/"
+                f"{quote(provider_seg, safe='')}/{quote(model_seg, safe='')}/"
+                f"{quote(t.get('task') or '_', safe='')}/trials/"
+                f"{quote(t['trial'], safe='')}"
+            )
             header_lines = [
                 f"**Trial:** `{t['trial']}`",
                 f"**Job:** `{t['job']}`",
@@ -648,8 +668,9 @@ with tab_trials:
                 f"**Model:** {model}",
                 f"**Verdict:** {verdict}",
                 f"**Path:** `{trial_path}`",
+                f'**Harbor view:** <a href="{harbor_url}" target="_blank" rel="noopener">open in new tab</a>',
             ]
-            st.markdown("  \n".join(header_lines))
+            st.markdown("  \n".join(header_lines), unsafe_allow_html=True)
 
             st.plotly_chart(
                 _stacked_bar(
