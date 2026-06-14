@@ -60,11 +60,11 @@ If a run fails with `FileExistsError` (job dir already exists), remove `jobs/<jo
 
 ## Integrations
 
-`integrations/<name>/` bundles the (MCP servers | skills | instruction append | verifier env) tuple that distinguishes a tool-access strategy for the same underlying task. Files: `integration.yaml` + sibling `instruction.md` + optional `skills/<skill-name>/SKILL.md` + optional `setup.sh` (all auto-discovered by the loader). `setup.sh` runs in the sandbox after env start and before the agent, with `environment_env` resolved in scope - use it for pre-auth (e.g. `apify login --token "$APIFY_TOKEN"`) so CLI/skill integrations match the implicit auth MCP gets. To add an integration, drop a new directory; reference it via `integration:` in a `RunConfig`.
+`integrations/<name>/` bundles the (MCP servers | skills | instruction append | verifier env) tuple that distinguishes a tool-access strategy for the same underlying task. Files: `integration.yaml` + sibling `instruction.md` + optional `skills/<skill-name>/SKILL.md` + optional `setup.sh` + optional `teardown.sh` (all auto-discovered by the loader). `setup.sh` runs in the sandbox after env start and before the agent, with `environment_env` resolved in scope - use it for pre-auth (e.g. `apify login --token "$APIFY_TOKEN"`) so CLI/skill integrations match the implicit auth MCP gets. `teardown.sh` runs after the agent and before artifact collection - use it to post-process the agent's working tree (build, lint, snapshot) so the verifier grades the output. Setup failure aborts the trial; teardown failure is logged and swallowed (a failed build is signal the verifier wants, not a trial abort). Setup gets `setup_env`, teardown gets `teardown_env`, neither leaks into the agent's persistent env. To add an integration, drop a new directory; reference it via `integration:` in a `RunConfig`.
 
 ## Harbor patches
 
-`src/mcp_evals/_patches/` holds runtime monkey-patches for harbor upstream gaps (codex MCP env propagation, E2B free-tier sandbox timeout, integration `setup.sh` exec in the sandbox). Prefer upstreaming over patching when feasible.
+`src/mcp_evals/_patches/` holds runtime monkey-patches for harbor upstream gaps (codex MCP env propagation, E2B free-tier sandbox timeout, integration `setup.sh` / `teardown.sh` exec in the sandbox). Prefer upstreaming over patching when feasible.
 
 ## Metrics
 
