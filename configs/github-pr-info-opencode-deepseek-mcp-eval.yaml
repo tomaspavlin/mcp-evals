@@ -4,4 +4,4 @@ tasks:
   - path: tasks/github-pr-info
 agents:
   - name: opencode
-    model_name: openrouter/deepseek/deepseek-chat-v3.1
+    model_name: openrouter/deepseek/deepseek-v4-flash@preset/deepseek-provider-only

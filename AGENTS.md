@@ -58,6 +58,16 @@ Naming: `<dataset>-<harness>-<model>-<tool>-<purpose>.yaml`; `<tool>` is `mcp`, 
 
 If a run fails with `FileExistsError` (job dir already exists), remove `jobs/<job-name>/` and rerun.
 
+## Models
+
+OpenRouter slugs prefixed with `openrouter/`. Always pin a provider via `@preset/<slug>` so prompt caching works across turns - without it OpenRouter re-routes every request and cache hits drop to ~0 (see [docs/harbor-constraints.md](docs/harbor-constraints.md) § OpenRouter prompt caching).
+
+Current models:
+- `openrouter/deepseek/deepseek-v4-flash@preset/deepseek-provider-only` - cheap default (~$0.09 / $0.18 per Mtok)
+- `openrouter/deepseek/deepseek-v4-pro@preset/deepseek-provider-only` - heavier tier (~$0.435 / $0.87 per Mtok)
+
+Adding a new model: confirm the desired upstream provider serves it at `https://openrouter.ai/<provider>/<model>`, create the matching `@preset/<provider>-only` on OpenRouter, then reference it via the combined `model@preset/slug` syntax.
+
 ## Integrations
 
 `integrations/<name>/` bundles the (MCP servers | skills | instruction append | verifier env) tuple that distinguishes a tool-access strategy for the same underlying task. Files: `integration.yaml` + sibling `instruction.md` + optional `skills/<skill-name>/SKILL.md` + optional `setup.sh` + optional `teardown.sh` (all auto-discovered by the loader). `setup.sh` runs in the sandbox after env start and before the agent, with `environment_env` resolved in scope - use it for pre-auth (e.g. `apify login --token "$APIFY_TOKEN"`) so CLI/skill integrations match the implicit auth MCP gets. `teardown.sh` runs after the agent and before artifact collection - use it to post-process the agent's working tree (build, lint, snapshot) so the verifier grades the output. Setup failure aborts the trial; teardown failure is logged and swallowed (a failed build is signal the verifier wants, not a trial abort). Setup gets `setup_env`, teardown gets `teardown_env`, neither leaks into the agent's persistent env. To add an integration, drop a new directory; reference it via `integration:` in a `RunConfig`.

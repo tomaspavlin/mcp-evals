@@ -52,6 +52,22 @@ When routing claude-code through OpenRouter, set `ANTHROPIC_BASE_URL=https://ope
 
 Model slugs on OpenRouter use **dots, not hyphens**: `anthropic/claude-haiku-4.5`, `anthropic/claude-sonnet-4.5`. Verified at https://openrouter.ai/api/v1/models.
 
+## OpenRouter prompt caching - pin the provider with a preset
+
+OpenRouter routes each request to whichever upstream provider it picks at that moment. Prompt caches are **per-provider** (DeepSeek's cache, Fireworks' cache, Together's cache are separate), so when consecutive calls land on different providers, the cache miss rate goes to ~100% and we pay full input tokens every turn.
+
+**Fix:** pin the provider via a preset. We created [`@preset/deepseek-provider-only`](https://openrouter.ai/settings/presets) with:
+
+```json
+{ "only": ["deepseek"], "allow_fallbacks": false }
+```
+
+Reference the preset in the model field using OpenRouter's combined syntax: `<provider>/<model>@preset/<preset-slug>`. All deepseek configs in `configs/` use this form. See `AGENTS.md` § Models for the current model list.
+
+The same problem applies to any provider whose cache we depend on - if you add a new family (Qwen, Llama, etc.) and care about caching, create a matching `@preset/<provider>-only` preset and reference it in the model name.
+
+**Per-model gotcha:** the named provider must actually serve the model. Some OpenRouter models are hosted only by third parties (`deepinfra`, `novita`, `siliconflow`, ...); pinning `@preset/deepseek-provider-only` to such a model 404s with `"No allowed providers are available for the selected model"`. Before adding a new `@preset/<provider>-only` preset to a config, check the model's provider list at `https://openrouter.ai/<provider>/<model>`.
+
 ## Cloud sandbox gotchas
 
 - **E2B `--env e2b`** - Harbor hardcodes `timeout=86_400` (24h) when creating the E2B sandbox (`harbor/environments/e2b.py:198`). E2B's free/Hobby tier caps sandbox lifetime at 1 hour, so every request gets rejected with `400: Timeout cannot be greater than 1 hours`. Workarounds: upgrade E2B to Pro, or patch the line to `3_600`.

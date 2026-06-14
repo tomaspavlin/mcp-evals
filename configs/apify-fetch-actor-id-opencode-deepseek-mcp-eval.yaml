@@ -5,4 +5,4 @@ tasks:
   - path: tasks/apify-fetch-actor-id
 agents:
   - name: opencode
-    model_name: openrouter/deepseek/deepseek-chat-v3.1
+    model_name: openrouter/deepseek/deepseek-v4-flash@preset/deepseek-provider-only
