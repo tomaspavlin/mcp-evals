@@ -143,6 +143,13 @@ Flags: `-p/--port` (default 8501), `--host`, `--no-browser`. See
   undercounts for verbose calls; cli/mcpc variants benefit most from this. Token totals
   are unaffected (reported by the API, not derived from content). See `docs/todo.md`.
 
+## Credits
+
+The GitHub task suite (`tasks/github-*`) is ported from the `bench-github`
+benchmark in [kunchenguid/axi](https://github.com/kunchenguid/axi) - task
+prompts and grading hints are reused, re-expressed as Harbor trajectory-judge
+tasks. Thanks to that project.
+
 ## Development
 
 Project goals, architecture, and conventions: see `AGENTS.md` and `docs/`.
