@@ -260,6 +260,15 @@ def call_values(per_call: list[dict]) -> dict[str, list[str]]:
     }
 
 
+def _all_criteria(reward_details: dict | None) -> list[dict]:
+    """Flatten criteria across one-or-many reward blocks (programmatic + judges)."""
+    if not reward_details:
+        return []
+    reward = reward_details.get("reward")
+    blocks = reward if isinstance(reward, list) else [reward] if reward else []
+    return [c for b in blocks if isinstance(b, dict) for c in (b.get("criteria") or [])]
+
+
 def tests_passed(reward_details: dict | None) -> bool | None:
     """All verifier criteria passed, from reward-details.json content.
 
@@ -267,9 +276,7 @@ def tests_passed(reward_details: dict | None) -> bool | None:
     how to display unknowns; trials with an exception should be counted as
     not passed by the caller).
     """
-    if not reward_details:
-        return None
-    criteria = (reward_details.get("reward") or {}).get("criteria")
+    criteria = _all_criteria(reward_details)
     if not criteria:
         return None
     return all(c.get("raw") is True or c.get("value") == 1.0 for c in criteria)
@@ -277,11 +284,8 @@ def tests_passed(reward_details: dict | None) -> bool | None:
 
 def failed_criteria(reward_details: dict | None) -> list[str]:
     """Names of criteria that did not pass."""
-    if not reward_details:
-        return []
-    criteria = (reward_details.get("reward") or {}).get("criteria") or []
     return [
         c.get("name", "?")
-        for c in criteria
+        for c in _all_criteria(reward_details)
         if not (c.get("raw") is True or c.get("value") == 1.0)
     ]
