@@ -1,0 +1,41 @@
+# NOTE: Trajectory judge — grades both the artifact (/app/leads.json) and
+# the multi-step process (which Apify Actors were run, in what order).
+# Judge model must be litellm-mapped because atif-trajectory triggers
+# get_model_info; deepseek-v4-* are NOT mapped yet, so use the newest
+# mapped deepseek (v3.2).
+[judge]
+judge = "openrouter/deepseek/deepseek-v3.2"
+files = ["/app/leads.json"]
+atif-trajectory = "/logs/agent/trajectory.json"
+mode = "batched"
+
+# --- Result criteria (graded against /app/leads.json) ---
+
+[[criterion]]
+name = "entries_look_like_coffee_roasters"
+description = "Every entry's `name` field plausibly identifies a real coffee shop, roaster, cafe, or coffee company in Portland, OR. Names like 'Stumptown Coffee Roasters', 'Heart Coffee Roasters', 'Coava Coffee', 'Water Avenue Coffee', or similar are acceptable. Generic names that look fabricated or unrelated to coffee are NOT acceptable."
+type = "binary"
+
+[[criterion]]
+name = "emails_are_real_or_honestly_empty"
+description = "Every email field is EITHER an empty string OR a plausible contact-style email at the same domain as the corresponding website. Emails at unrelated domains, or that look invented (e.g. 'info@example.com', 'contact@coffee.com' when the website is a different domain), score 'no'. An entirely empty set of emails is acceptable as long as websites were actually fetched."
+type = "binary"
+
+# --- Process criteria (graded against the trajectory) ---
+
+[[criterion]]
+name = "ran_google_maps_actor"
+description = "The trajectory shows the agent executed (call-actor / apify call) a Google Maps Apify Actor (e.g. compass/crawler-google-places, or another Maps scraper) with a search query targeting specialty coffee roasters in Portland, OR. Merely searching the store for a Maps Actor (search-actors) is NOT sufficient."
+type = "binary"
+
+[[criterion]]
+name = "ran_separate_website_actor"
+description = "The trajectory shows the agent executed a SECOND, distinct Apify Actor (e.g. apify/rag-web-browser, apify/website-content-crawler, or another content/crawler Actor) to fetch website content for the selected places. Using only the Google Maps Actor scores 'no'."
+type = "binary"
+
+# Soft signal, non-gating: did the agent honor the rating/review filter?
+[[criterion]]
+name = "respected_quality_filter"
+description = "The trajectory or the result indicates the agent applied the rating >= 4.5 and reviews >= 100 filter to the Maps results before picking the top 3 — either via Actor input fields (e.g. placeMinimumStars) or by post-filtering the dataset. Score 'no' if the agent appears to have returned the first 3 Maps results without applying the filter."
+type = "binary"
+weight = 0.0

@@ -1,0 +1,36 @@
+# Trajectory judge — verifies the right Actor was used and the install preview
+# is semantically about installing the Apify CLI (not arbitrary doc text).
+[judge]
+judge = "openrouter/deepseek/deepseek-v3.2"
+files = ["/app/cli_rag.json"]
+atif-trajectory = "/logs/agent/trajectory.json"
+mode = "batched"
+
+# --- Process criteria ---
+
+[[criterion]]
+name = "ran_website_content_crawler"
+description = "The trajectory shows the agent executed the Apify Actor `apify/website-content-crawler` with the start URL `https://docs.apify.com/cli/` (or a path under it). A different crawler Actor is acceptable only if it crawled the same docs site; merely searching the store with search-actors is NOT sufficient."
+type = "binary"
+
+[[criterion]]
+name = "respected_page_cap"
+description = "The Actor input the agent constructed set `maxCrawlPages` to a value <= 50 (cost guardrail from the prompt). If the agent set no cap, set it absurdly high, or relied on the default of ~10 million, score 'no'."
+type = "binary"
+
+# --- Result criteria ---
+
+[[criterion]]
+name = "install_preview_is_about_cli_installation"
+description = "The `installPreview` field of /app/cli_rag.json is a verbatim text excerpt that is semantically about installing or setting up the Apify CLI specifically — e.g. it discusses npm/brew install commands, prerequisites, or post-install setup of the CLI. Generic doc-intro text, navigation menus, or content from an unrelated page scores 'no'."
+type = "binary"
+
+[[criterion]]
+name = "urls_containing_actor_count_correct"
+description = "The `urlsContainingActor` value in /app/cli_rag.json equals the actual count of crawled-dataset URLs whose path contains the substring 'actor' (case-insensitive). Determine this by enumerating the URLs the agent's crawl returned (visible in the trajectory's get-dataset-items / `apify dataset` tool outputs) and counting how many contain 'actor'. A value of 0 is acceptable if and only if none of the crawled URLs contain 'actor'. Any miscount scores 'no'."
+type = "binary"
+
+[[criterion]]
+name = "page_count_matches_crawl"
+description = "The `pageCount` value in /app/cli_rag.json equals (or is within ±1 of) the number of items the agent's crawl actually returned, as visible in the trajectory (e.g. the `total` field from get-dataset-items, or the length of the dataset items array the agent processed). A pageCount that doesn't reflect the agent's actual crawl scores 'no'."
+type = "binary"

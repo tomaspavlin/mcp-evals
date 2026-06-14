@@ -1,0 +1,23 @@
+version = "1.0"
+
+[task]
+name = "mcp-evals/apify-lead-gen-coffee"
+description = "Lead-gen chain: Google Maps + website crawl + contact extraction for Portland coffee roasters. Judge verifies multi-Actor process."
+
+[metadata]
+difficulty = "hard"
+category = "lead-generation"
+tags = ["read-only", "multi-actor", "chain", "filter", "judge"]
+
+[verifier]
+timeout_sec = 300.0
+
+[agent]
+timeout_sec = 900.0
+
+[verifier.env]
+OPENROUTER_API_KEY = "${OPENROUTER_API_KEY}"
+# Rewardkit always sends `reasoning_effort` to the judge; DeepSeek models on
+# OpenRouter expose `reasoning` (not `reasoning_effort`), so litellm raises
+# UnsupportedParamsError. Drop unsupported params instead of erroring.
+LITELLM_DROP_PARAMS = "True"

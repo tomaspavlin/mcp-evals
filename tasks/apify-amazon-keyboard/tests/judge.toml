@@ -1,0 +1,34 @@
+# Trajectory judge — verifies the agent actually went through Amazon via an
+# Apify Actor (not from prior knowledge), and that the chosen product really
+# is a wired mechanical keyboard.
+[judge]
+judge = "openrouter/deepseek/deepseek-v3.2"
+files = ["/app/keyboard.json"]
+atif-trajectory = "/logs/agent/trajectory.json"
+mode = "batched"
+
+# --- Process criteria ---
+
+[[criterion]]
+name = "ran_amazon_apify_actor"
+description = "The trajectory shows the agent executed (call-actor / apify call) an Amazon Apify Actor (e.g. junglee/Amazon-crawler, jaybird/amazon-product-data-scraper, igview-owner/amazon-product-data-scraper, harvestlab/amazon-scraper, or another Amazon scraper) and obtained product data from it. Merely searching the store with search-actors is NOT sufficient — an actual Actor run must have happened."
+type = "binary"
+
+[[criterion]]
+name = "queried_for_mechanical_keyboard"
+description = "The Actor input that the agent constructed (visible in the trajectory) targeted mechanical keyboards on amazon.com — e.g. the search keyword, URL, or category filter mentions 'mechanical keyboard' (or close variants like 'mechanical gaming keyboard'). Score 'no' if the agent searched for an unrelated category."
+type = "binary"
+
+# --- Result criteria (graded against /app/keyboard.json + trajectory context) ---
+
+[[criterion]]
+name = "product_is_wired_mechanical_keyboard"
+description = "The chosen product (identifiable from its ASIN, brand, and any trajectory context) is plausibly a WIRED mechanical keyboard sold on amazon.com. Wireless-only keyboards, membrane keyboards, keyboard-and-mouse combos, gamepads, or unrelated products score 'no'. If there is not enough trajectory context to tell, score based on whether the brand and ASIN belong to a known wired mechanical keyboard SKU family."
+type = "binary"
+
+# Soft, non-gating: did the agent enforce the price+rating+review filters?
+[[criterion]]
+name = "applied_all_filters"
+description = "The trajectory shows the agent applied (or at minimum verified) all four filters from the prompt: price < 100, rating >= 4.4, wired (not wireless), and reviewCount >= 1000. Either via Actor input fields where possible, or by post-filtering. Score 'no' if the agent appears to have returned the most-reviewed result overall without checking the constraints."
+type = "binary"
+weight = 0.0

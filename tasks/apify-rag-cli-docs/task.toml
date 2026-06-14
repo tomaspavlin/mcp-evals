@@ -1,0 +1,20 @@
+version = "1.0"
+
+[task]
+name = "mcp-evals/apify-rag-cli-docs"
+description = "Focused doc crawl + dataset post-processing for an Apify CLI docs RAG slice. Judge verifies install-preview semantics."
+
+[metadata]
+difficulty = "hard"
+category = "rag-ingestion"
+tags = ["read-only", "single-actor", "dataset-parse", "schema-literacy", "judge"]
+
+[verifier]
+timeout_sec = 300.0
+
+[agent]
+timeout_sec = 900.0
+
+[verifier.env]
+OPENROUTER_API_KEY = "${OPENROUTER_API_KEY}"
+LITELLM_DROP_PARAMS = "True"
