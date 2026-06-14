@@ -449,31 +449,71 @@ with tab_grouped:
             fig_tokens.update_xaxes(title=" | ".join(group_by))
             st.plotly_chart(fig_tokens, use_container_width=True)
 
+def _trial_row(t: dict) -> dict:
+    row = {
+        "trial": t["trial"],
+        "job": t["job"],
+        "task": t.get("task") or "?",
+        "integration": t["integration"],
+        "integration_type": t["integration_type"],
+        "model": t["model"],
+        "tests_passed": t["tests_passed"],
+        "failed_criteria": t["failed_criteria"],
+        "errored": t["errored"],
+        "exception": t["exception"],
+        "escape_calls_detail": " | ".join(t["escape_call_values"]),
+        "errored_calls_detail": " | ".join(t["errored_call_values"]),
+        "agent_turns": t["agent_turns"],
+        "tool_calls": t["tool_calls_total"],
+        "channel_calls": t["channel_calls"],
+        "off_channel_calls": t["off_channel_calls"],
+        "errored_calls": t["errored_calls"],
+        "channel_output_chars": t["channel_output_chars"],
+        "prompt_baseline_tokens": t["prompt_baseline_tokens"],
+        "input_tokens": t["n_input"],
+        "cache_tokens": t["n_cache"],
+        "output_tokens": t["n_output"],
+        "cost_usd": t["cost_usd"],
+        "agent_exec_s": t["t_agent_exec"],
+    }
+    return row
+
+
 with tab_trials:
-    task_names = sorted({t["task"] for t in trials if t.get("task")})
-    if not task_names:
-        st.info("No tasks found in the selected trials.")
+    if not trials:
+        st.info("No trials in the selected jobs.")
     else:
-        picked_task = st.selectbox("Task", task_names)
+        # Trial picker: every trial across selected jobs. Pick rows to narrow the
+        # plot below; empty selection = show all.
+        overview_rows = [_trial_row(t) for t in trials]
+        ov_event = st.dataframe(
+            overview_rows,
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="multi-row",
+            use_container_width=True,
+            key="trial_overview",
+        )
+        picked_idx = ov_event.selection.rows if ov_event and ov_event.selection.rows else None
+        picked_trials = [trials[i] for i in picked_idx] if picked_idx else list(trials)
+
         x_axis = st.selectbox("X axis", ["time (s)", "step", "trial"], index=0)
         only_channel = st.checkbox("Show only channel events", value=False)
-        task_trials = [t for t in trials if t["task"] == picked_task]
         # Style: color = integration_type, dash = (model, agent). Trials sharing all
         # three render identically (intentional). Each distinct (integration_type,
         # model, agent) combination contributes a single legend entry.
         palette = px.colors.qualitative.Plotly
         dash_cycle = ["solid", "dot", "dash", "longdash", "dashdot", "longdashdot"]
-        modes_seen = sorted({t["integration_type"] for t in task_trials})
-        ma_seen = sorted({(t.get("model") or "?", t.get("agent") or "?") for t in task_trials})
+        modes_seen = sorted({t["integration_type"] for t in picked_trials})
+        ma_seen = sorted({(t.get("model") or "?", t.get("agent") or "?") for t in picked_trials})
         color_for = {v: palette[i % len(palette)] for i, v in enumerate(modes_seen)}
         dash_for = {ma: dash_cycle[i % len(dash_cycle)] for i, ma in enumerate(ma_seen)}
-        legend_shown: set[tuple] = set()
         fig_tl = go.Figure()
-        table_rows = []
         tool_call_rows = []
-        for trial_idx, t in enumerate(task_trials, start=1):
+        for trial_idx, t in enumerate(picked_trials, start=1):
             tl = load_trial_timeline(t["job"], t["trial"], mtimes.get(t["job"], 0.0))
-            label = f"{t['job']} / {t['trial']}"
+            verdict = "pass" if t["tests_passed"] else ("error" if t["errored"] else "fail")
+            hover_label = f"{t['trial']} · {verdict}<br>{t['job']}"
             kinds = [
                 metrics_mod.classify_call(
                     {"function_name": m["name"], "arguments": m["args"]},
@@ -492,41 +532,16 @@ with tab_trials:
                     "args": json.dumps(m["args"])[:300],
                     "kind": kind,
                 })
-            table_rows.append({
-                "trial": t["trial"],
-                "job": t["job"],
-                "integration": t["integration"],
-                "integration_type": t["integration_type"],
-                "model": t["model"],
-                "tests_passed": t["tests_passed"],
-                "failed_criteria": t["failed_criteria"],
-                "errored": t["errored"],
-                "exception": t["exception"],
-                "escape_calls_detail": " | ".join(t["escape_call_values"]),
-                "errored_calls_detail": " | ".join(t["errored_call_values"]),
-                "agent_turns": t["agent_turns"],
-                "tool_calls": t["tool_calls_total"],
-                "channel_calls": t["channel_calls"],
-                "off_channel_calls": t["off_channel_calls"],
-                "errored_calls": t["errored_calls"],
-                "channel_output_chars": t["channel_output_chars"],
-                "prompt_baseline_tokens": t["prompt_baseline_tokens"],
-                "input_tokens": t["n_input"],
-                "cache_tokens": t["n_cache"],
-                "output_tokens": t["n_output"],
-                "cost_usd": t["cost_usd"],
-                "agent_exec_s": t["t_agent_exec"],
-            })
             if not tl["line"]:
                 continue
             mode = t["integration_type"]
             ma = (t.get("model") or "?", t.get("agent") or "?")
-            style_key = (mode, ma)
             color = color_for[mode]
             dash = dash_for[ma]
-            group_label = f"{mode} | {ma[0]} / {ma[1]}"
-            show_legend = style_key not in legend_shown
-            legend_shown.add(style_key)
+            # One legend entry per trial: name carries the trial id + style context
+            # so users can tell trials apart even when several share color/dash.
+            trace_name = f"{t['trial']} · {mode} · {ma[1]} · {ma[0]}"
+            trace_group = f"{t['job']}/{t['trial']}"
 
             def _x(r):
                 if x_axis == "step":
@@ -535,16 +550,17 @@ with tab_trials:
                     return t["trial"]
                 return r["t"]
 
-            if x_axis != "trial":
+            line_shown = x_axis != "trial"
+            if line_shown:
                 fig_tl.add_trace(go.Scatter(
                     x=[_x(r) for r in tl["line"]],
                     y=[r["cum_tokens"] for r in tl["line"]],
                     mode="lines",
-                    name=group_label,
-                    legendgroup=group_label,
-                    showlegend=show_legend,
+                    name=trace_name,
+                    legendgroup=trace_group,
+                    showlegend=True,
                     line=dict(color=color, dash=dash),
-                    hovertemplate="x=%{x}<br>tokens=%{y}<extra>" + label + "</extra>",
+                    hovertemplate="%{x}<br>%{y} tokens<extra>" + hover_label + "</extra>",
                 ))
             visible_marks = [
                 (m, is_ch) for m, is_ch in zip(tl["marks"], channel_flags)
@@ -555,26 +571,24 @@ with tab_trials:
                     x=[_x(m) for m, _ in visible_marks],
                     y=[m["cum_tokens"] for m, _ in visible_marks],
                     mode="markers",
-                    name=group_label,
-                    legendgroup=group_label,
-                    # In trial mode there's no line trace, so the markers have
-                    # to carry the legend entry themselves.
-                    showlegend=(x_axis == "trial" and show_legend),
+                    name=trace_name,
+                    legendgroup=trace_group,
+                    # If the line trace already carries the legend entry for this
+                    # trial, suppress the markers' duplicate entry.
+                    showlegend=not line_shown,
                     marker=dict(size=8, symbol="circle", color=color),
                     customdata=[[m["name"], json.dumps(m["args"])[:300]] for m, _ in visible_marks],
-                    hovertemplate="x=%{x}<br>tokens=%{y}<br><b>%{customdata[0]}</b><br>%{customdata[1]}<extra>" + label + "</extra>",
+                    hovertemplate="%{x}<br>%{y} tokens<br><b>%{customdata[0]}</b><br>%{customdata[1]}<extra>" + hover_label + "</extra>",
                 ))
         if not fig_tl.data:
-            st.info("No trajectory.json found for trials of this task.")
+            st.info("No trajectory.json found for the picked trials.")
         else:
-            xaxis_title = {"time (s)": "seconds from trial start", "step": "step id", "trial": "trial"}[x_axis]
-            fig_tl.update_xaxes(title=xaxis_title)
-            fig_tl.update_yaxes(title="cumulative tokens (sum of per-call prompt + completion)")
+            fig_tl.update_xaxes(title=x_axis)
+            fig_tl.update_yaxes(title="cumulative tokens")
             st.plotly_chart(fig_tl, use_container_width=True)
-        st.dataframe(table_rows, use_container_width=True)
         st.subheader("Tool calls")
         if tool_call_rows:
-            meta_for = {t["trial"]: t for t in task_trials}
+            meta_for = {t["trial"]: t for t in picked_trials}
             trial_names = sorted({r["trial"] for r in tool_call_rows})
 
             def _label(name: str) -> str:
