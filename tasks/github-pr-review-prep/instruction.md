@@ -1,0 +1,1 @@
+I need to review PR #50782 in openclaw/openclaw. Give me a briefing: what it changes (title and body summary), who authored it, whether CI passed (how many checks passed vs failed), and a summary of any comments on it.

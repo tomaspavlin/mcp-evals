@@ -13,5 +13,5 @@ mode = "individual"
 
 [[criterion]]
 name = "task_complete"
-description = """KNOWN FACTS: PR #50782 is titled 'Gateway: harden OpenResponses file-context escaping', was authored by joshavant (Josh Avant), and has been merged.\n\nGrade PASS only if the agent actually executed GitHub commands / tool calls to obtain the data AND produced a correct, complete answer for the task. Grade FAIL if it hallucinated data without running commands, ran commands but misinterpreted the results, or gave a partial answer when a complete one was requested."""
+description = """KNOWN FACTS: The first 3 items are: 'fix(compaction): use full-session token count for post-compaction sanity check' by efe-arv, 'fix(telegram): thread media transport policy into SSRF' by obviyus, and 'fix: handle Discord gateway metadata fetch failures' by jalehman.\n\nGrade PASS only if the agent actually executed GitHub commands / tool calls to obtain the data AND produced a correct, complete answer for the task. Grade FAIL if it hallucinated data without running commands, ran commands but misinterpreted the results, or gave a partial answer when a complete one was requested."""
 type = "binary"

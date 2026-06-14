@@ -13,5 +13,5 @@ mode = "individual"
 
 [[criterion]]
 name = "task_complete"
-description = """KNOWN FACTS: PR #50782 is titled 'Gateway: harden OpenResponses file-context escaping', was authored by joshavant (Josh Avant), and has been merged.\n\nGrade PASS only if the agent actually executed GitHub commands / tool calls to obtain the data AND produced a correct, complete answer for the task. Grade FAIL if it hallucinated data without running commands, ran commands but misinterpreted the results, or gave a partial answer when a complete one was requested."""
+description = """KNOWN FACTS: The repository openclaw/this-does-not-exist does not exist - the agent should report an error.\n\nGrade PASS if the agent actually attempted the operation and then correctly identified and reported the error (e.g. a not-found error). Grade FAIL if it fabricated a result, claimed success, or did not recognize that the target does not exist."""
 type = "binary"

@@ -1,0 +1,1 @@
+Find the most recent open issue in openclaw/openclaw labeled 'bug'. Check if any open PRs reference that issue's number in their title or body. Report the issue title and whether a fix appears to be in progress.

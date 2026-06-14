@@ -1,20 +1,20 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/github-pr-info"
-description = "axi/view_pr: View pull request #50782 in openclaw/openclaw and report its title, author, and whether it... LLM trajectory judge."
+name = "mcp-evals/github-merged-pr-ci-audit"
+description = "axi/merged_pr_ci_audit: Look at the 10 most recently merged PRs in openclaw/openclaw. For each one, report the tit... LLM trajectory judge."
 
 [metadata]
-difficulty = "easy"
-category = "single_step"
-tags = ["read-only", "single-step"]
-axi_task = "view_pr"
+difficulty = "hard"
+category = "investigation"
+tags = ["read-only", "investigation"]
+axi_task = "merged_pr_ci_audit"
 
 [verifier]
-timeout_sec = 300.0
+timeout_sec = 600.0
 
 [agent]
-timeout_sec = 180.0
+timeout_sec = 600.0
 
 [verifier.env]
 OPENROUTER_API_KEY = "${OPENROUTER_API_KEY}"

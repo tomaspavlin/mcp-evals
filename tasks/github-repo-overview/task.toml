@@ -1,14 +1,14 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/github-pr-info"
-description = "axi/view_pr: View pull request #50782 in openclaw/openclaw and report its title, author, and whether it... LLM trajectory judge."
+name = "mcp-evals/github-repo-overview"
+description = "axi/repo_overview: Report the star count, primary language, and default branch of openclaw/openclaw. LLM trajectory judge."
 
 [metadata]
 difficulty = "easy"
 category = "single_step"
 tags = ["read-only", "single-step"]
-axi_task = "view_pr"
+axi_task = "repo_overview"
 
 [verifier]
 timeout_sec = 300.0

@@ -1,20 +1,20 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/github-pr-info"
-description = "axi/view_pr: View pull request #50782 in openclaw/openclaw and report its title, author, and whether it... LLM trajectory judge."
+name = "mcp-evals/github-issue-then-comments"
+description = "axi/issue_then_comments: Find the most recent open issue in openclaw/openclaw with the label 'bug', then view its c... LLM trajectory judge."
 
 [metadata]
-difficulty = "easy"
-category = "single_step"
-tags = ["read-only", "single-step"]
-axi_task = "view_pr"
+difficulty = "medium"
+category = "multi_step"
+tags = ["read-only", "multi-step"]
+axi_task = "issue_then_comments"
 
 [verifier]
-timeout_sec = 300.0
+timeout_sec = 420.0
 
 [agent]
-timeout_sec = 180.0
+timeout_sec = 300.0
 
 [verifier.env]
 OPENROUTER_API_KEY = "${OPENROUTER_API_KEY}"

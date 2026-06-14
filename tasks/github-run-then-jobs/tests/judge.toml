@@ -13,5 +13,5 @@ mode = "individual"
 
 [[criterion]]
 name = "task_complete"
-description = """KNOWN FACTS: PR #50782 is titled 'Gateway: harden OpenResponses file-context escaping', was authored by joshavant (Josh Avant), and has been merged.\n\nGrade PASS only if the agent actually executed GitHub commands / tool calls to obtain the data AND produced a correct, complete answer for the task. Grade FAIL if it hallucinated data without running commands, ran commands but misinterpreted the results, or gave a partial answer when a complete one was requested."""
+description = """KNOWN FACTS: The agent must identify a specific run ID and report individual job names with their statuses (success/failure/skipped), not just an overall run status.\n\nGrade PASS only if the agent actually executed GitHub commands / tool calls to obtain the data AND produced a correct, complete answer for the task. Grade FAIL if it hallucinated data without running commands, ran commands but misinterpreted the results, or gave a partial answer when a complete one was requested."""
 type = "binary"

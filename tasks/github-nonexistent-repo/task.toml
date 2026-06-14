@@ -1,20 +1,20 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/github-pr-info"
-description = "axi/view_pr: View pull request #50782 in openclaw/openclaw and report its title, author, and whether it... LLM trajectory judge."
+name = "mcp-evals/github-nonexistent-repo"
+description = "axi/nonexistent_repo: List issues in openclaw/this-does-not-exist and tell me what happened. LLM trajectory judge."
 
 [metadata]
 difficulty = "easy"
-category = "single_step"
-tags = ["read-only", "single-step"]
-axi_task = "view_pr"
+category = "error_recovery"
+tags = ["read-only", "error-recovery"]
+axi_task = "nonexistent_repo"
 
 [verifier]
 timeout_sec = 300.0
 
 [agent]
-timeout_sec = 180.0
+timeout_sec = 120.0
 
 [verifier.env]
 OPENROUTER_API_KEY = "${OPENROUTER_API_KEY}"
