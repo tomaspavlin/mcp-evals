@@ -13,5 +13,5 @@ mode = "individual"
 
 [[criterion]]
 name = "task_complete"
-description = """KNOWN FACTS: openclaw/openclaw has approximately 124 labels.\n\nGrade PASS only if the agent actually executed GitHub commands / tool calls to obtain the data AND produced a correct, complete answer for the task. Grade FAIL if it hallucinated data without running commands, ran commands but misinterpreted the results, or gave a partial answer when a complete one was requested."""
+description = """KNOWN FACTS: openclaw/openclaw has many labels - well over 100, and the count grows over time. The agent must paginate through all label pages and report a total in the hundreds (the exact number drifts; any correctly-paginated count of roughly 100-400 is acceptable). Reporting only a single default page (e.g. 30 or 100) as the total is incorrect.\n\nGrade PASS only if the agent actually executed GitHub commands / tool calls to obtain the data AND produced a correct, complete answer for the task. Grade FAIL if it hallucinated data without running commands, ran commands but misinterpreted the results, or gave a partial answer when a complete one was requested."""
 type = "binary"

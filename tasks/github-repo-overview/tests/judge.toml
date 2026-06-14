@@ -13,5 +13,5 @@ mode = "individual"
 
 [[criterion]]
 name = "task_complete"
-description = """KNOWN FACTS: openclaw/openclaw uses TypeScript, default branch is main, ~326k stars.\n\nGrade PASS only if the agent actually executed GitHub commands / tool calls to obtain the data AND produced a correct, complete answer for the task. Grade FAIL if it hallucinated data without running commands, ran commands but misinterpreted the results, or gave a partial answer when a complete one was requested."""
+description = """KNOWN FACTS: openclaw/openclaw uses TypeScript and its default branch is main. It has a very large star count in the hundreds of thousands (the exact figure drifts over time; any value in that range obtained from a real query is acceptable - do not require a specific number).\n\nGrade PASS only if the agent actually executed GitHub commands / tool calls to obtain the data AND produced a correct, complete answer for the task. Grade FAIL if it hallucinated data without running commands, ran commands but misinterpreted the results, or gave a partial answer when a complete one was requested."""
 type = "binary"
