@@ -16,7 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 JOBS_DIR = Path(os.environ.get("MCP_EVALS_JOBS_DIR", REPO_ROOT / "jobs")).expanduser().resolve()
 # Fallback parse for jobs predating MCP_EVALS_INTEGRATION in verifier env.
 KNOWN_INTEGRATION_TYPES = {"mcp", "cli", "skill", "mcpc"}
-GROUP_KEYS = ["job", "integration", "integration_type", "integration_target", "task", "agent", "model"]
+GROUP_KEYS = ["trial", "job", "integration", "integration_type", "integration_target", "task", "agent", "model"]
 
 # Shared trajectory-metric logic (stdlib-only). Loaded by file path because the
 # dashboard venv has streamlit+harbor but not the mcp_evals package, and
@@ -28,6 +28,17 @@ metrics_mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(metrics_mod)
 
 st.set_page_config(page_title="mcp-evals dashboard", layout="wide")
+# Widen the sidebar and let multiselect chips show full job names instead of ellipsing.
+st.markdown(
+    """
+    <style>
+    section[data-testid="stSidebar"] { width: 520px !important; min-width: 520px !important; }
+    section[data-testid="stSidebar"] span[data-baseweb="tag"] { max-width: none !important; }
+    section[data-testid="stSidebar"] span[data-baseweb="tag"] > div { max-width: none !important; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 st.title("mcp-evals dashboard")
 
 
@@ -251,7 +262,21 @@ if not all_jobs:
     st.warning(f"No jobs found in {JOBS_DIR}")
     st.stop()
 
-selected = st.sidebar.multiselect("Jobs", all_jobs, default=all_jobs[:5])
+@st.cache_data(show_spinner=False)
+def _job_trial_count(job_name: str, mtime: float) -> int:
+    del mtime
+    return len(JobScanner(JOBS_DIR).list_trials(job_name))
+
+
+job_mtimes = {d.name: d.stat().st_mtime for d in job_dirs}
+trial_counts = {j: _job_trial_count(j, job_mtimes[j]) for j in all_jobs}
+default_jobs = set(all_jobs[:5])
+st.sidebar.markdown("**Jobs**")
+with st.sidebar.container(height=320):
+    selected = [
+        j for j in all_jobs
+        if st.checkbox(f"{j} ({trial_counts[j]})", value=j in default_jobs, key=f"job_cb_{j}")
+    ]
 selected = sorted(selected, key=all_jobs.index)
 if not selected:
     st.info("Pick at least one job in the sidebar.")
@@ -271,7 +296,7 @@ if not trials:
 tab_grouped, tab_trials, tab_grid = st.tabs(["Grouped", "Trial details", "Token grid"])
 
 with tab_grouped:
-    group_by = st.multiselect("Group by", GROUP_KEYS, default=["job"])
+    group_by = st.multiselect("Group by", GROUP_KEYS, default=["trial"])
     if not group_by:
         st.info("Pick at least one grouping dimension.")
     else:
