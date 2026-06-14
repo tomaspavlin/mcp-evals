@@ -109,6 +109,230 @@ def load_trial_timeline(job_name: str, trial_name: str, mtime: float) -> dict:
     }
 
 
+def _normalize_content(content) -> str:
+    # Flatten message/observation content (str | list[ContentPart] | None) to text.
+    # ContentPart: {"type": "text"|"image", "text"?: str, "source"?: {"path": ...}}
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for p in content:
+            if not isinstance(p, dict):
+                parts.append(str(p))
+                continue
+            if p.get("type") == "text":
+                parts.append(p.get("text") or "")
+            elif p.get("type") == "image":
+                path = (p.get("source") or {}).get("path") or "?"
+                parts.append(f"_[image: `{path}`]_")
+            else:
+                parts.append(json.dumps(p))
+        return "\n".join(parts)
+    return str(content)
+
+
+def _first_line(text: str, limit: int = 120) -> str:
+    lines = (text or "").strip().splitlines()
+    line = lines[0] if lines else ""
+    return line[:limit] + ("…" if len(line) > limit else "")
+
+
+def _fmt_secs(s: float | None) -> str:
+    if s is None:
+        return ""
+    if s < 60:
+        return f"{s:.1f}s"
+    m, rem = divmod(s, 60)
+    return f"{int(m)}m {rem:.0f}s"
+
+
+@st.cache_data(show_spinner=False)
+def load_trial_steps(job_name: str, trial_name: str, mtime: float) -> list[dict]:
+    # Mirrors what `harbor view jobs` renders per step: source, model, message,
+    # reasoning, tool calls, observations, per-step metrics, and timing offsets.
+    del mtime
+    traj_path = JOBS_DIR / job_name / trial_name / "agent" / "trajectory.json"
+    if not traj_path.exists():
+        return []
+    try:
+        steps = json.loads(traj_path.read_text()).get("steps", [])
+    except (json.JSONDecodeError, OSError):
+        return []
+    t0: datetime | None = None
+    prev_t: float | None = None
+    cum_billed = 0
+    out: list[dict] = []
+    for s in steps:
+        ts = s.get("timestamp")
+        when: datetime | None = None
+        if ts:
+            try:
+                when = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            except ValueError:
+                when = None
+        if when is not None and t0 is None:
+            t0 = when
+        t_offset = (when - t0).total_seconds() if (when and t0) else None
+        t_delta = (t_offset - prev_t) if (t_offset is not None and prev_t is not None) else None
+        if t_offset is not None:
+            prev_t = t_offset
+        m = s.get("metrics") or {}
+        prompt = m.get("prompt_tokens")
+        cached = m.get("cached_tokens")
+        completion = m.get("completion_tokens")
+        # Codex trajectories omit cached_tokens — leave uncached as the full prompt.
+        uncached = (prompt - cached) if (prompt is not None and cached is not None) else prompt
+        cum_billed += (prompt or 0) + (completion or 0)
+        out.append({
+            "step_id": s.get("step_id"),
+            "source": s.get("source") or "?",
+            "model_name": s.get("model_name"),
+            "message": s.get("message"),
+            "reasoning": s.get("reasoning_content"),
+            "tool_calls": s.get("tool_calls") or [],
+            "observation": (s.get("observation") or {}).get("results") or [],
+            "metrics": m,
+            "cached": cached,
+            "uncached": uncached,
+            "output": completion,
+            "cum_billed": cum_billed if (prompt is not None or completion is not None) else None,
+            "t_offset": t_offset,
+            "t_delta": t_delta,
+        })
+    return out
+
+
+_SOURCE_COLORS = {
+    "system": "#6b7280",
+    "user":   "#2563eb",
+    "agent":  "#7c3aed",
+}
+
+
+def _fmt_n(n: int | float | None) -> str:
+    if n is None:
+        return "-"
+    if n < 1000:
+        return str(int(n))
+    if n < 1_000_000:
+        return f"{n / 1000:.1f}k"
+    return f"{n / 1_000_000:.1f}M"
+
+
+_KIND_COLORS = {"channel": "#10b981", "escape": "#f59e0b"}
+
+
+@st.dialog("Step detail", width="large")
+def _show_step_dialog(step: dict, kinds: list[str]) -> None:
+    color = _SOURCE_COLORS.get(step["source"], "#6b7280")
+    header = (
+        f'<span style="display:inline-block;padding:1px 8px;'
+        f'border-radius:4px;background:{color};color:white;'
+        f'font-size:11px;font-weight:600;">{step["source"]}</span> '
+        f'<span style="color:#6b7280;font-size:12px;">step #{step["step_id"]}'
+    )
+    if step["model_name"]:
+        header += f' · {step["model_name"]}'
+    header += "</span>"
+    st.markdown(header, unsafe_allow_html=True)
+
+    message_text = _normalize_content(step["message"])
+    if message_text:
+        st.markdown(message_text)
+
+    if step["reasoning"]:
+        with st.expander("Reasoning", expanded=False):
+            st.code(step["reasoning"], language=None)
+
+    for tc, kind in zip(step["tool_calls"], kinds):
+        fname = tc.get("function_name") or "?"
+        args = tc.get("arguments") or {}
+        kc = _KIND_COLORS.get(kind, "#6b7280")
+        st.markdown(
+            f'<div style="margin-top:8px;">tool call · <code>{fname}</code> '
+            f'<span style="display:inline-block;padding:1px 6px;'
+            f'border-radius:4px;background:{kc};color:white;'
+            f'font-size:10px;font-weight:600;">{kind}</span></div>',
+            unsafe_allow_html=True,
+        )
+        st.code(json.dumps(args, indent=2), language="json")
+
+    for i, r in enumerate(step["observation"]):
+        content = _normalize_content(r.get("content"))
+        if not content:
+            continue
+        st.caption(f"observation #{i + 1}")
+        st.code(content, language=None)
+
+    cost = (step["metrics"] or {}).get("cost_usd")
+    if cost is not None:
+        st.caption(f"${cost:.4f}")
+
+
+def _render_trajectory_steps(
+    steps: list[dict],
+    integration_target: str | None,
+    channel: str | None,
+    state_key: str,
+) -> None:
+    if not steps:
+        st.info("No trajectory.json found for this trial.")
+        return
+
+    # Classify each step's tool calls so the table and dialog agree on what
+    # counts as channel / escape. Same call as the Tool calls tab uses.
+    step_kinds: list[list[str]] = []
+    for s in steps:
+        step_kinds.append([
+            metrics_mod.classify_call(
+                {"function_name": tc.get("function_name") or "?", "arguments": tc.get("arguments") or {}},
+                integration_target, channel,
+            )
+            for tc in s["tool_calls"]
+        ])
+
+    rows = []
+    for s, kinds in zip(steps, step_kinds):
+        preview = _first_line(_normalize_content(s["message"]))
+        kind_label = ",".join(sorted(set(kinds))) if kinds else ""
+        rows.append({
+            "#": s["step_id"],
+            "source": s["source"],
+            "model": s["model_name"] or "",
+            "+Δs": _fmt_secs(s["t_delta"]) if s["t_delta"] is not None else "",
+            "Σs": _fmt_secs(s["t_offset"]) if s["t_offset"] is not None else "",
+            "cached": _fmt_n(s["cached"]),
+            "uncached": _fmt_n(s["uncached"]),
+            "out": _fmt_n(s["output"]),
+            "Σ tok": _fmt_n(s["cum_billed"]),
+            "kind": kind_label,
+            "preview": preview,
+        })
+
+    event = st.dataframe(
+        rows,
+        use_container_width=True,
+        hide_index=True,
+        height=min(36 + 35 * len(rows), 600),
+        on_select="rerun",
+        selection_mode="single-row",
+        key=f"traj_df_{state_key}",
+    )
+
+    # Open the dialog only when the selection changes — otherwise dismissing the
+    # dialog would re-open it on the next rerun because the row stays selected.
+    seen_key = f"traj_shown_{state_key}"
+    if event.selection.rows:
+        idx = event.selection.rows[0]
+        if st.session_state.get(seen_key) != idx:
+            st.session_state[seen_key] = idx
+            _show_step_dialog(steps[idx], step_kinds[idx])
+    else:
+        st.session_state.pop(seen_key, None)
+
+
 @st.cache_data(show_spinner=False)
 def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
     # mtime in the cache key invalidates when the job dir changes.
@@ -712,48 +936,16 @@ with tab_trials:
                     st.info("No tool calls recorded.")
 
             with tab_traj:
-                tl = load_trial_timeline(t["job"], t["trial"], mtimes.get(t["job"], 0.0))
-                if not tl["line"]:
-                    st.info("No trajectory.json found for this trial.")
-                else:
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(
-                        x=[r["t"] for r in tl["line"]],
-                        y=[r["cum_tokens"] for r in tl["line"]],
-                        mode="lines",
-                        name="cumulative tokens",
-                        line=dict(color="#4b5563"),
-                        hovertemplate="%{x:.1f}s<br>%{y:,} tokens<extra></extra>",
-                    ))
-                    kinds = [
-                        metrics_mod.classify_call(
-                            {"function_name": m["name"], "arguments": m["args"]},
-                            t["integration_target"], t["channel"],
-                        )
-                        for m in tl["marks"]
-                    ]
-                    if tl["marks"]:
-                        fig.add_trace(go.Scatter(
-                            x=[m["t"] for m in tl["marks"]],
-                            y=[m["cum_tokens"] for m in tl["marks"]],
-                            mode="markers",
-                            name="tool calls",
-                            marker=dict(
-                                size=9,
-                                color=["#10b981" if k == "channel" else "#f59e0b" for k in kinds],
-                                line=dict(color="#111827", width=0.5),
-                            ),
-                            customdata=[[m["name"], json.dumps(m["args"])[:300], k]
-                                        for m, k in zip(tl["marks"], kinds)],
-                            hovertemplate=("%{x:.1f}s<br>%{y:,} tokens<br>"
-                                           "<b>%{customdata[0]}</b> (%{customdata[2]})<br>"
-                                           "%{customdata[1]}<extra></extra>"),
-                        ))
-                    fig.update_xaxes(title="seconds")
-                    fig.update_yaxes(title="cumulative tokens")
-                    fig.update_layout(height=360, margin=dict(l=8, r=8, t=24, b=8))
-                    st.plotly_chart(fig, use_container_width=True)
-                    st.caption(f"{tl['n_steps']} step(s) · {tl['n_tool_calls']} tool call(s)")
+                steps_data = load_trial_steps(t["job"], t["trial"], mtimes.get(t["job"], 0.0))
+                _render_trajectory_steps(
+                    steps_data,
+                    t["integration_target"],
+                    t["channel"],
+                    state_key=f"{t['job']}_{t['trial']}",
+                )
+                if steps_data:
+                    n_calls = sum(len(s["tool_calls"]) for s in steps_data)
+                    st.caption(f"{len(steps_data)} step(s) · {n_calls} tool call(s)")
 
             with tab_info:
                 if t["exception"]:
