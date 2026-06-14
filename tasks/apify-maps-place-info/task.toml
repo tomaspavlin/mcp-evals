@@ -1,0 +1,14 @@
+version = "1.0"
+
+[verifier]
+timeout_sec = 300.0
+
+[agent]
+timeout_sec = 300.0
+
+[verifier.env]
+OPENROUTER_API_KEY = "${OPENROUTER_API_KEY}"
+# Rewardkit always sends `reasoning_effort` to the judge; DeepSeek models on
+# OpenRouter expose `reasoning` (not `reasoning_effort`), so litellm raises
+# UnsupportedParamsError. Drop unsupported params instead of erroring.
+LITELLM_DROP_PARAMS = "True"

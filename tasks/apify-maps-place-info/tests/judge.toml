@@ -1,0 +1,43 @@
+# NOTE: a trajectory judge (atif-trajectory set) makes rewardkit call
+# litellm.get_model_info(judge) to size the trajectory token budget, which
+# raises for models litellm hasn't mapped. deepseek-v4-* are NOT mapped yet, so
+# they crash a trajectory judge (they work fine as the *agent* model). v3.2 is
+# the newest mapped deepseek; reuses OPENROUTER_API_KEY, 163k context.
+[judge]
+judge = "openrouter/deepseek/deepseek-v3.2"
+files = ["/app/answer.md"]
+atif-trajectory = "/logs/agent/trajectory.json"
+mode = "batched"
+
+# --- Result criteria (graded against /app/answer.md) ---
+
+[[criterion]]
+name = "address_correct"
+description = "The answer reports the Louvre Museum's address as being in 75001 Paris, France: the postal code ('75001') and city ('Paris') must both be present and correct. A street name (e.g. 'Rue de Rivoli') and building number may also appear and are fine, but are not required. Minor punctuation/whitespace differences are acceptable."
+type = "binary"
+
+[[criterion]]
+name = "category_correct"
+description = "The answer identifies the place's primary category as a museum. 'Art museum' or 'Museum' are both acceptable; an unrelated category is not."
+type = "binary"
+
+# --- Process criteria (graded against the agent's trajectory) ---
+
+[[criterion]]
+name = "ran_google_maps_actor"
+description = "The trajectory shows the agent actually EXECUTED a Google Maps Apify Actor (for example compass/crawler-google-places, or another Google Maps place/business scraper) to obtain the data — i.e. an actor run / call-actor / `apify call` for a Google Maps Actor that returned results. Merely searching for an Actor without running it does NOT count. Answering from prior knowledge, a generic web search, or a raw HTTP request to a non-Apify source does NOT count."
+type = "binary"
+
+[[criterion]]
+name = "actor_query_targets_louvre"
+description = "The input the agent passed to the Google Maps Actor it ran referenced the target business — i.e. the search string / query / location input mentions the Louvre (e.g. 'Louvre', 'Louvre Museum', 'Musée du Louvre'). If the Actor was run with an unrelated or empty query, score no."
+type = "binary"
+
+# Soft, tracked-but-non-gating (weight = 0 is excluded from the weighted-mean
+# score but still recorded). Measures tool-selection quality without failing
+# otherwise-correct runs that use a smaller, valid Maps Actor.
+[[criterion]]
+name = "chose_reputable_actor"
+description = "The Google Maps Actor the agent ran is a well-established, high-usage one (for example compass/crawler-google-places). Score 'yes' for a clearly reputable/popular Actor, 'no' for a small or obscure one. A small Actor is still acceptable elsewhere; this criterion only tracks whether the agent found the best-known tool."
+type = "binary"
+weight = 0.0

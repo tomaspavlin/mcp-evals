@@ -1,0 +1,41 @@
+# Trajectory judge: grades both the result (answer.md) and the multi-step
+# process (the two chained Actor runs in the trajectory). Judge model must be
+# litellm-mapped because atif-trajectory triggers get_model_info; deepseek-v4-*
+# are NOT mapped yet, so use the newest mapped deepseek (v3.2).
+[judge]
+judge = "openrouter/deepseek/deepseek-v3.2"
+files = ["/app/answer.md"]
+atif-trajectory = "/logs/agent/trajectory.json"
+mode = "batched"
+
+# --- Result criteria (graded against /app/answer.md) ---
+
+[[criterion]]
+name = "describes_crawlee"
+description = "The answer describes Crawlee as a library/tool for web scraping, web crawling, and/or browser automation. Any wording conveying that meaning is acceptable; an unrelated description is not."
+type = "binary"
+
+[[criterion]]
+name = "languages_correct"
+description = "The answer states the programming language(s) Crawlee supports, naming at least one of: JavaScript, TypeScript, Node.js, or Python. (Crawlee supports JavaScript/TypeScript and Python.)"
+type = "binary"
+
+# --- Process criteria (graded against the agent's trajectory) ---
+
+[[criterion]]
+name = "obtained_url_via_search_actor"
+description = "The trajectory shows the agent ran a web-search Apify Actor (e.g. apify/google-search-scraper, apify/rag-web-browser, or another SERP/search Actor) and obtained the official Crawlee website URL (crawlee.dev) from those search results — rather than hardcoding a URL it already knew. A search Actor must have actually been executed (a call-actor / actor run / `apify call`), not merely searched for in the Store."
+type = "binary"
+
+[[criterion]]
+name = "crawled_site_via_actor"
+description = "The trajectory shows the agent ran a website crawler/content Apify Actor (e.g. apify/website-content-crawler) to fetch the content of the Crawlee site. The page content must come from an Apify Actor run, NOT from a built-in web-fetch/browse tool (e.g. webfetch, fetch, curl, wget) or from prior knowledge."
+type = "binary"
+
+# Soft, tracked-but-non-gating (weight = 0): did the agent genuinely chain TWO
+# distinct Apify Actors (a search Actor then a crawler Actor)?
+[[criterion]]
+name = "chained_two_actors"
+description = "The trajectory shows the agent ran two DISTINCT Apify Actors in sequence: first a search Actor to find the URL, then a separate crawler/content Actor to fetch the page. Score 'no' if only one Actor was used for everything."
+type = "binary"
+weight = 0.0
