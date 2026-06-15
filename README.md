@@ -142,6 +142,12 @@ Flags: `-p/--port` (default 8501), `--host`, `--no-browser`. See
   "Full output saved to: ..." stub instead of the full content), so `channel_output_chars`
   undercounts for verbose calls; cli/mcpc variants benefit most from this. Token totals
   are unaffected (reported by the API, not derived from content). See `docs/todo.md`.
+- Do not run multiple integration configs for the **same task** in parallel. They
+  materialize into the shared `tasks/<task>/environment/`, so concurrent jobs clobber
+  each other and a job can build the wrong integration's image (silent false passes, or
+  `BuildException` from concurrent cold builds of the same e2b template). Run same-task
+  configs serially, one at a time. See `docs/todo.md` § "E2B template collision across
+  concurrent same-task integration jobs".
 
 ## Credits
 

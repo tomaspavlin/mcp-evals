@@ -58,6 +58,8 @@ Naming: `<dataset>-<harness>-<model>-<tool>-<purpose>.yaml`; `<tool>` is `mcp`, 
 
 If a run fails with `FileExistsError` (job dir already exists), remove `jobs/<job-name>/` and rerun.
 
+**Do not run multiple integration configs for the same task in parallel.** They materialize into the shared `tasks/<task>/environment/`, so concurrent jobs clobber each other and a job can build the wrong integration's image (e.g. apify-mcpc silently builds the apify-cli image, `mcpc` absent, agents fall back to `curl`, results are false passes). Run same-task configs serially, one at a time. See `docs/todo.md` § "E2B template collision across concurrent same-task integration jobs".
+
 ## Models
 
 OpenRouter slugs prefixed with `openrouter/`. Always pin a provider via `@preset/<slug>` so prompt caching works across turns - without it OpenRouter re-routes every request and cache hits drop to ~0 (see [docs/harbor-constraints.md](docs/harbor-constraints.md) § OpenRouter prompt caching).

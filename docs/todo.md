@@ -82,3 +82,47 @@ Data we already collect per trial (in `jobs/<job>/<trial>/`):
 
 - Cost-vs-success scatter per trial - too few trials per cell (3) to look meaningful.
 - Time-series across runs - runs aren't ordered meaningfully yet.
+
+## Subagent trajectories invisible to viewer + verifier
+
+Diagnosed 2026-06-15 from Group D of `docs/agent-integration-matrix.md`. Claude-code's `Agent` tool spawns a subagent whose tool calls (Bash, WebFetch, MCP, more nested `Agent`s) are logged separately to `<trial>/agent/sessions/projects/-app/<session>/subagents/agent-<id>.jsonl` + `.meta.json`. None of our downstream consumers read them:
+
+- **ATIF builder excludes them.** `harbor/agents/installed/claude_code.py:182` filters out any session JSONL whose path contains `subagents` when discovering the primary session, so `agent/trajectory.json` records the parent's `Agent` tool call as one opaque step. Subagent tool calls never enter ATIF.
+- **`harbor view jobs` doesn't load them.** `harbor/src/harbor/viewer/server.py:1732` only reads `agent/trajectory.json`.
+- **Our dashboard doesn't load them.** `apps/dashboard/app.py:71,157,362` only reads `agent/trajectory.json`.
+- **Task verifiers don't load them.** `tasks/*/tests/check.py` calls `collect_tool_calls(load_trajectory("/logs/agent/trajectory.json"))`, so `used_expected_channel` is blind to anything inside an `Agent` call - a delegation pattern that would route MCP through a subagent would falsely score 0 on the channel criterion.
+
+Group D showed sonnet's failure mode (subagents fall back to shell because claude-code doesn't propagate MCP servers down). The same blind spot would also hide a *successful* MCP call made from inside a subagent on any agent that does propagate MCP downward.
+
+Fix direction (ordered by value):
+1. **Flatten subagent tool calls into ATIF.** In the claude-code adapter, walk `sessions/.../subagents/*.jsonl` (using `.meta.json` to thread parent/child + name the subagent) and emit their tool_use events as additional steps under the parent `Agent` step, e.g. via a nested `subagent_trajectory_ref` on the parent `Observation.results[]` (the ATIF schema already has the field - `harbor/agents/installed/claude_code.py:275,325` currently set it to `None`). Once ATIF carries them, both viewers and verifier "just work".
+2. **Or, until (1) lands, walk the sessions dir from the verifier.** `tasks/*/tests/check.py` could scan `/logs/agent/sessions/projects/*/subagents/*.jsonl` and append tool uses to `_tool_calls()`. Faster to ship; doesn't help the viewers.
+3. **Viewer: render subagent steps as collapsible nested groups** under the parent `Agent` call (in `harbor view jobs` and `apps/dashboard/`) once ATIF carries the refs.
+
+Upstream ask: land (1) in harbor's claude-code adapter so all downstream consumers benefit. Mark Group D and any future "agent delegated to subagent" cells as untrusted on the channel criterion until then.
+
+## E2B template collision across concurrent same-task integration jobs (our bug + Harbor gap)
+
+Diagnosed 2026-06-15 from the `apify-fetch-actor-id` matrix (Group B in `docs/agent-integration-matrix.md`). Two distinct races; the first silently corrupts results, the second is flaky infra noise.
+
+### Race A: shared materialize path → wrong image built (correctness bug, ours)
+
+`materialize_environment` (`src/mcp_evals/integrations/materialize.py:26`) copies the integration's `environment/` into the **task-keyed, shared** path `tasks/<task>/environment/`. The e2b template name is computed lazily at trial-start as `<environment_name>__<dirhash(environment/)>[:8]` (`harbor/environments/definition.py:75`, `e2b.py:84`), where `environment_name` is the **task** name. So nothing in the template identity distinguishes integrations except the dirhash of that shared dir.
+
+When ≥2 integration jobs for the same task run concurrently (the matrix launched all 4 apify configs within ~4 s), they materialize into and clobber the same `tasks/<task>/environment/`. Whichever Dockerfile is on disk when a trial reaches template-hash time wins. In the 2026-06-14 run the `apify-mcpc` trials hashed+built the **apify-cli** image (`apify-fetch-actor-id__d0745b9e`): `mcpc` was never installed, every `mcpc …` returned exit 127, and agents silently fell back to `curl https://api.apify.com`. The verifier channel check `cmd.startswith("mcpc ")` (`tasks/apify-fetch-actor-id/tests/check.py:58`) counts the *failed attempt* as success, so sonnet/codex scored `used_expected_channel(mcpc)=1.0` despite never running mcpc. **The entire apify-mcpc column was a false pass.**
+
+Note `apify-cli` and `apify-skill` ship byte-identical Dockerfiles (`apify-cli@1.6.2`) → identical dirhash → they legitimately share a template; integration name must therefore enter the template **name/hash**, not just the materialize path, to be fully collision-proof.
+
+Fix (ours): isolate materialize into a per-job working copy of the task dir (disjoint targets), AND fold the integration name into `environment_name`/the template alias so identical-Dockerfile integrations don't collide either. Add a `setup.sh` smoke assert (`command -v mcpc || exit 1`) per integration so a wrong image aborts loudly instead of passing via fallback. Harden `used_expected_channel` to require a *successful* channel call (inspect tool_result for exit 127 / "command not found"), not just a command prefix.
+
+### Race B: cold-build thundering herd on one alias (Harbor gap)
+
+`E2BEnvironment.start` (`harbor/environments/e2b.py:219`) is `if not await self._does_template_exist(): await self._create_template()` with **no build lock**. When several trials in one job start on a not-yet-cached template, they all see "doesn't exist" and build the same alias concurrently → e2b rejects the racers with `BuildException: 400: build is not in waiting state` / `build was cancelled` (the opencode failures in Group B). `apple_container.py:31` already serializes this with `_image_build_locks: dict[str, asyncio.Lock]` keyed by `environment_name`; e2b has no equivalent. This can hit even a **solo** job with `-n >1` on a cold template; once one trial caches the alias the rest reuse it warm. The e2b-parallel memory ("rerun SandboxException trials solo") is a symptom of this.
+
+Fix: add an e2b build lock mirroring `apple_container`, or pre-warm the template (build once before fanning out trials). Upstream ask: port the apple_container build-lock pattern into the e2b backend.
+
+### Stopgap until fixed
+
+Run integration jobs for the same task **serially** (one config at a time, don't launch the matrix configs concurrently). Race A vanishes (distinct Dockerfile content → distinct alias → correct image each time); Race B is reduced to the cold-build-within-one-job case, mitigated by `-n 1` or rerunning `BuildException` trials solo.
+
+The "do not run same-task integrations in parallel" warnings in `README.md` (Known limitations) and `AGENTS.md` (Configs section) document this stopgap. **Once race A is fixed, remove both warnings** (and drop this stopgap subsection).
