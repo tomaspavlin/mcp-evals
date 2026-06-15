@@ -16,10 +16,47 @@ def _tool_calls() -> list[dict]:
 
 # Channel matching mirrored from src/mcp_evals/metrics.py (cannot import the
 # package inside the verifier container); keep both in sync manually.
+#
+# GitHub MCP tool allowlist for harnesses that strip the server prefix from
+# tool names (codex: "pull_request_read"). claude-code preserves a
+# "mcp__github__" prefix, opencode a "github_" prefix; both are caught by the
+# prefix check directly. This list only needs to cover the prefix-strippers.
+# Extend when surfacing new GitHub MCP tools in evals.
+GITHUB_MCP_TOOLS = {
+    "pull-request-read",
+    "pull-request-list",
+    "issue-read",
+    "issue-list",
+    "list-pull-requests",
+    "list-issues",
+    "get-pull-request",
+    "get-issue",
+    "list-commits",
+    "get-commit",
+    "list-releases",
+    "get-latest-release",
+    "list-branches",
+    "list-tags",
+    "search-issues",
+    "search-pull-requests",
+    "search-code",
+    "search-repositories",
+    "get-file-contents",
+    "get-me",
+}
+
+MCP_NAME_PREFIXES = ("github_", "github-", "mcp__github__")
 # Shell tool names per harness: opencode "bash", claude-code "Bash" (lowercased
 # before comparison), codex "exec_command" (command in the "cmd" argument).
-MCP_NAME_PREFIXES = ("github_", "github-", "mcp__github__")
 SHELL_TOOLS = {"bash", "exec_command", "shell", "run_terminal_cmd", "local_shell"}
+
+
+def _normalize_mcp_tool(name: str) -> str:
+    for prefix in MCP_NAME_PREFIXES:
+        if name.startswith(prefix):
+            name = name[len(prefix):]
+            break
+    return name.replace("_", "-")
 
 
 def _matches_channel(tc: dict, channel: str) -> bool:
@@ -27,7 +64,7 @@ def _matches_channel(tc: dict, channel: str) -> bool:
     args = tc.get("arguments") or {}
     cmd = ((args.get("command") or args.get("cmd")) or "").lstrip()
     if channel == "mcp":
-        return name.startswith(MCP_NAME_PREFIXES)
+        return name.startswith(MCP_NAME_PREFIXES) or _normalize_mcp_tool(name) in GITHUB_MCP_TOOLS
     if channel == "cli":
         return name in SHELL_TOOLS and cmd.startswith("gh ")
     return False

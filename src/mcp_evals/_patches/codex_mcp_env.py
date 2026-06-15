@@ -18,6 +18,7 @@ from harbor.agents.installed.codex import Codex
 # integration that wraps a remote MCP behind auth.
 MCP_SERVER_ENV: dict[str, list[str]] = {
     "apify": ["APIFY_TOKEN"],
+    "github": ["GITHUB_TOKEN"],
 }
 
 
