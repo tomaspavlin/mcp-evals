@@ -33,7 +33,8 @@ st.set_page_config(page_title="mcp-evals dashboard", layout="wide")
 st.markdown(
     """
     <style>
-    section[data-testid="stSidebar"] { width: 520px !important; min-width: 520px !important; }
+    section[data-testid="stSidebar"][aria-expanded="true"] { width: 420px !important; min-width: 420px !important; }
+    section[data-testid="stSidebar"][aria-expanded="false"] { min-width: 0 !important; width: 0 !important; }
     section[data-testid="stSidebar"] span[data-baseweb="tag"] { max-width: none !important; }
     section[data-testid="stSidebar"] span[data-baseweb="tag"] > div { max-width: none !important; }
     </style>
@@ -417,6 +418,7 @@ def aggregate(trials: list[dict], by: list[str]) -> list[dict]:
         "agent_turns": 0, "channel_calls": 0, "off_channel_calls": 0,
         "errored_calls": 0, "channel_output_chars": 0,
         "baseline_sum": 0, "baseline_n": 0,
+        "reward_sum": 0.0, "reward_n": 0,
     })
     for t in trials:
         key = " | ".join(str(t.get(b) or "?") for b in by)
@@ -442,6 +444,9 @@ def aggregate(trials: list[dict], by: list[str]) -> list[dict]:
         if t["prompt_baseline_tokens"]:
             g["baseline_sum"] += t["prompt_baseline_tokens"]
             g["baseline_n"] += 1
+        if t.get("reward") is not None:
+            g["reward_sum"] += t["reward"]
+            g["reward_n"] += 1
     rows = []
     for key, g in groups.items():
         total = g["total"] or 1
@@ -451,6 +456,8 @@ def aggregate(trials: list[dict], by: list[str]) -> list[dict]:
             "passed": g["passed"],
             "errored": g["errored"],
             "pass_rate": g["passed"] / total,
+            # None when no trial had a numeric reward (verifier returned no rewards dict).
+            "avg_reward": (g["reward_sum"] / g["reward_n"]) if g["reward_n"] else None,
             "avg_agent_turns": g["agent_turns"] / total,
             "avg_channel_calls": g["channel_calls"] / total,
             "avg_off_channel_calls": g["off_channel_calls"] / total,
@@ -533,7 +540,7 @@ if not trials:
     st.warning("Selected jobs have no trial results yet.")
     st.stop()
 
-tab_grouped, tab_trials, tab_grid = st.tabs(["Grouped", "Trials", "Token grid"])
+tab_grouped, tab_trials, tab_grid, tab_matrix = st.tabs(["Grouped", "Trials", "Token grid", "Matrix"])
 
 with tab_grouped:
     group_by = st.multiselect("Group by", GROUP_KEYS, default=["trial"])
@@ -553,7 +560,7 @@ with tab_grouped:
         # aggregate() still returns the sums (charts hover, other consumers);
         # cost_usd stays as the one total with natural sum semantics (job spend).
         SUMMARY_COLUMNS = [
-            "group", "total", "passed", "errored", "pass_rate",
+            "group", "total", "passed", "errored", "pass_rate", "avg_reward",
             "avg_agent_turns", "avg_channel_calls", "avg_off_channel_calls",
             "avg_errored_calls", "avg_channel_output_chars", "avg_prompt_baseline_tokens",
             "avg_cost_usd", "avg_uncached_input_tokens", "avg_cache_tokens", "cache_hit_rate", "avg_output_tokens",
@@ -572,6 +579,16 @@ with tab_grouped:
         fig.update_xaxes(title=" | ".join(group_by))
         fig.update_yaxes(range=[0, 1])
         st.plotly_chart(fig, use_container_width=True)
+
+        # Float reward from the verifier's rewards dict; captures partial credit
+        # that pass_rate's all-or-nothing check throws away. None for trials
+        # whose verifier emitted no numeric reward.
+        reward_rows = [r for r in rows if r["avg_reward"] is not None]
+        if reward_rows:
+            st.subheader("Avg reward")
+            fig_rw = px.bar(reward_rows, x="group", y="avg_reward", hover_data=["total"])
+            fig_rw.update_xaxes(title=" | ".join(group_by))
+            st.plotly_chart(fig_rw, use_container_width=True)
 
         if not eff_rows:
             st.warning("No passed trials in the selection; efficiency charts are empty. "
@@ -698,6 +715,7 @@ def _trial_row(t: dict) -> dict:
         "integration_type": t["integration_type"],
         "model": t["model"],
         "tests_passed": t["tests_passed"],
+        "reward": t.get("reward"),
         "failed_criteria": t["failed_criteria"],
         "errored": t["errored"],
         "exception": t["exception"],
@@ -1048,3 +1066,114 @@ with tab_grid:
         n_tasks = len({r["task"] for r in grid_rows})
         fig_grid.update_layout(height=max(300, 260 * n_tasks))
         st.plotly_chart(fig_grid, use_container_width=True)
+
+# (label, higher_better, fixed_range, tick_format). higher_better drives the
+# colorscale direction; None means neutral (no good/bad), used for counts.
+MATRIX_METRICS: dict[str, tuple[str, bool | None, tuple[float, float] | None, str]] = {
+    "pass_rate": ("Pass rate", True, (0.0, 1.0), ".0%"),
+    "avg_reward": ("Avg reward", True, None, ".2f"),
+    "total": ("Trial count", None, None, "d"),
+    "avg_cost_usd": ("Avg cost (USD)", False, None, "$.4f"),
+    "avg_agent_exec_s": ("Avg agent exec (s)", False, None, ".1f"),
+    "avg_channel_calls": ("Avg channel calls", None, None, ".1f"),
+    "avg_off_channel_calls": ("Avg off-channel calls", False, None, ".2f"),
+    "avg_errored_calls": ("Avg errored calls", False, None, ".2f"),
+    "avg_prompt_baseline_tokens": ("Avg baseline prompt tokens", False, None, ",.0f"),
+    "avg_output_tokens": ("Avg output tokens", False, None, ",.0f"),
+    "cache_hit_rate": ("Cache hit rate", True, (0.0, 1.0), ".0%"),
+}
+
+with tab_matrix:
+    st.caption("Pivot trials into a matrix. Pick row/column dimensions and the cell metric.")
+    matrix_dim_options = [k for k in GROUP_KEYS if k != "trial"]
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        row_dims = st.multiselect(
+            "Rows", matrix_dim_options, default=["agent", "model"], key="mx_rows",
+        )
+    with c2:
+        col_dims = st.multiselect(
+            "Columns", matrix_dim_options, default=["integration_type"], key="mx_cols",
+        )
+    with c3:
+        metric = st.selectbox(
+            "Value", list(MATRIX_METRICS.keys()),
+            format_func=lambda k: MATRIX_METRICS[k][0], key="mx_metric",
+        )
+    label, higher_better, fixed_range, tick_fmt = MATRIX_METRICS[metric]
+
+    # pass_rate / avg_reward want the failed trials too (avg_reward captures the
+    # partial credit pass_rate throws away); everything else respects the toggle.
+    matrix_trials = (
+        [t for t in trials if t["tests_passed"]]
+        if (passed_only and metric not in ("pass_rate", "avg_reward"))
+        else trials
+    )
+
+    if not row_dims or not col_dims:
+        st.info("Pick at least one row and one column dimension.")
+    elif not matrix_trials:
+        st.warning("No trials match the current filters.")
+    else:
+        cells: dict[tuple[str, str], list[dict]] = defaultdict(list)
+        for t in matrix_trials:
+            rk = " | ".join(str(t.get(d) or "?") for d in row_dims)
+            ck = " | ".join(str(t.get(d) or "?") for d in col_dims)
+            cells[(rk, ck)].append(t)
+        row_labels = sorted({rk for rk, _ in cells})
+        col_labels = sorted({ck for _, ck in cells})
+        # by=[] makes aggregate() collapse the cell's trials into one group;
+        # reusing it keeps metric definitions in lockstep with the Grouped tab.
+        z: list[list[float | None]] = [[None] * len(col_labels) for _ in row_labels]
+        counts: list[list[int]] = [[0] * len(col_labels) for _ in row_labels]
+        for (rk, ck), ts in cells.items():
+            r_idx = row_labels.index(rk)
+            c_idx = col_labels.index(ck)
+            agg = aggregate(ts, [])[0]
+            z[r_idx][c_idx] = agg.get(metric)
+            counts[r_idx][c_idx] = agg["total"]
+
+        if higher_better is True:
+            colorscale = "RdYlGn"
+        elif higher_better is False:
+            colorscale = "RdYlGn_r"
+        else:
+            colorscale = "Blues"
+
+        text = [
+            [
+                ("" if z[i][j] is None else format(z[i][j], tick_fmt.replace("$", "")))
+                for j in range(len(col_labels))
+            ]
+            for i in range(len(row_labels))
+        ]
+        hover = [
+            [
+                (
+                    f"{' | '.join(row_dims)}: {row_labels[i]}<br>"
+                    f"{' | '.join(col_dims)}: {col_labels[j]}<br>"
+                    f"{label}: {'-' if z[i][j] is None else format(z[i][j], tick_fmt.lstrip('$,'))}<br>"
+                    f"trials: {counts[i][j]}"
+                )
+                for j in range(len(col_labels))
+            ]
+            for i in range(len(row_labels))
+        ]
+        fig_mx = go.Figure(
+            go.Heatmap(
+                z=z, x=col_labels, y=row_labels,
+                colorscale=colorscale,
+                zmin=fixed_range[0] if fixed_range else None,
+                zmax=fixed_range[1] if fixed_range else None,
+                text=text, texttemplate="%{text}",
+                hoverinfo="text", hovertext=hover,
+                colorbar=dict(title=label, tickformat=tick_fmt),
+            )
+        )
+        fig_mx.update_xaxes(title=" | ".join(col_dims), side="top")
+        fig_mx.update_yaxes(title=" | ".join(row_dims), autorange="reversed")
+        fig_mx.update_layout(
+            height=max(240, 60 + 36 * len(row_labels)),
+            margin=dict(l=80, r=20, t=80, b=40),
+        )
+        st.plotly_chart(fig_mx, use_container_width=True)
