@@ -43,7 +43,30 @@ CONNECTORS: dict[str, dict[str, Any]] = {
     },
     "github": {
         "mcp_name_prefixes": ("github_", "github-", "mcp__github__"),
-        "mcp_tools": set(),  # codex-style stripped names unknown yet; extend when needed
+        # codex-style stripped names (no `github_` prefix). Extend when surfacing
+        # new GitHub MCP tools in evals - mirrored in tasks/github-*/tests/check.py.
+        "mcp_tools": {
+            "pull-request-read",
+            "pull-request-list",
+            "issue-read",
+            "issue-list",
+            "list-pull-requests",
+            "list-issues",
+            "get-pull-request",
+            "get-issue",
+            "list-commits",
+            "get-commit",
+            "list-releases",
+            "get-latest-release",
+            "list-branches",
+            "list-tags",
+            "search-issues",
+            "search-pull-requests",
+            "search-code",
+            "search-repositories",
+            "get-file-contents",
+            "get-me",
+        },
         "cli_prefixes": ("gh ",),
         "api_hosts": ("api.github.com",),
     },

@@ -52,7 +52,15 @@ CONNECTORS = {
     },
     "github": {
         "mcp_name_prefixes": ("github_", "github-", "mcp__github__"),
-        "mcp_tools": set(),
+        # codex strips the `github_` prefix, so list the bare normalized names
+        # the agent might emit. Mirrored from tasks/github-*/tests/check.py.
+        "mcp_tools": {
+            "pull-request-read", "pull-request-list", "issue-read", "issue-list",
+            "list-pull-requests", "list-issues", "get-pull-request", "get-issue",
+            "list-commits", "get-commit", "list-releases", "get-latest-release",
+            "list-branches", "list-tags", "search-issues", "search-pull-requests",
+            "search-code", "search-repositories", "get-file-contents", "get-me",
+        },
         "cli_prefix": "gh ",
     },
 }
