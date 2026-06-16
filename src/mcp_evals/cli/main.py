@@ -18,7 +18,7 @@ def main() -> None:
 app.command(name="run", help="Run a job from an mcp-evals RunConfig.")(run_command)
 app.command(
     name="materialize",
-    help="Copy an integration's environment/ into each task's environment/ dir.",
+    help="Copy the shared base image dir into each task's environment/ dir.",
 )(materialize_command)
 app.command(
     name="dashboard",

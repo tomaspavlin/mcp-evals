@@ -9,6 +9,9 @@ difficulty = "easy"
 category = "connectivity"
 tags = ["read-only", "smoke-test"]
 
+[mcp_evals]
+connectors = ["apify"]
+
 [verifier]
 timeout_sec = 60.0
 

@@ -10,6 +10,9 @@ category = "investigation"
 tags = ["read-only", "investigation"]
 axi_task = "bug_triage_search"
 
+[mcp_evals]
+connectors = ["github"]
+
 [verifier]
 timeout_sec = 600.0
 

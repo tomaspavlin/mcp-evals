@@ -9,6 +9,9 @@ difficulty = "easy"
 category = "actor-discovery"
 tags = ["read-only", "search"]
 
+[mcp_evals]
+connectors = ["apify"]
+
 [verifier]
 timeout_sec = 60.0
 

@@ -7,7 +7,13 @@ from rewardkit.criteria._trajectory import collect_tool_calls, load_trajectory
 EXPECTED_ID = "moJRLRc85AitArpNN"
 TRAJECTORY_PATH = "/logs/agent/trajectory.json"
 
-EXPECTED_CHANNEL = os.environ.get("EXPECTED_CHANNEL") or None
+import json as _json
+CONNECTOR = "apify"
+_channels = _json.loads(os.environ.get("MCP_EVALS_CHANNELS_JSON") or "{}")
+EXPECTED_CHANNEL = _channels.get(CONNECTOR) or os.environ.get("MCP_EVALS_CHANNEL") or None
+# `skill` channel is CLI usage + extra prompt; match like cli.
+if EXPECTED_CHANNEL == "skill":
+    EXPECTED_CHANNEL = "cli"
 
 
 def _tool_calls() -> list[dict]:

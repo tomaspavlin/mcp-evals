@@ -9,18 +9,20 @@ efficiency, and tool-call behavior. Built on
 
 How it works:
 
-1. Define each tool-access variant as an integration in `integrations/`: the
-   MCP server config, skills, or CLI setup the agent gets. Define as many
-   variants as you want to compare or iterate on.
-2. Define tasks in `tasks/`: an instruction the agent should accomplish using
-   that tooling, plus a verifier that automatically decides whether it
-   succeeded.
-3. `mcp-evals run` launches the agents in sandboxes on every task and runs the
-   verifiers.
+1. Define a **connector** (a third-party service: apify, github, ...) under
+   `connectors/<name>/<channel>/` for each access **channel** you want to
+   compare: `mcp`, `cli`, `mcpc`, `skill`. Each cell holds the MCP server
+   config, the CLI setup, or the skill the agent gets.
+2. Define tasks in `tasks/`: an instruction the agent should accomplish, plus
+   a verifier. Each task declares which connectors it needs via
+   `[mcp_evals].connectors = [...]` in its `task.toml` - one task can use
+   several connectors (e.g. apify + github together).
+3. `mcp-evals run` launches the agents in sandboxes on every task with the
+   chosen channel(s) wired up, and runs the verifiers.
 4. Results, including full execution traces, are stored structured under
    `jobs/`. Inspect them in the results browser or dashboard, or point a coding
    agent (e.g. Claude Code) at them to diagnose failures and iterate on your
-   skills and integrations.
+   skills and connectors.
 
 ## Installation
 
@@ -54,14 +56,18 @@ key (`E2B_API_KEY` by default).
 
 The CLI reads eval definitions relative to the directory you run it from:
 
-- `integrations/<name>/` — `integration.yaml` (MCP servers, skills, env) plus
-  optional `instruction.md`, `setup.sh`, `environment/`, `skills/`. Examples in
-  this repo's `integrations/`.
-- `tasks/<name>/` — Harbor task dirs (`task.toml`, instruction, verifier).
+- `connectors/<connector>/<channel>/` - `cell.yaml` (MCP servers, env, setup_env)
+  plus optional `instruction.md`, `setup.sh`, `teardown.sh`, `skills/`. Examples
+  in this repo's `connectors/`.
+- `tasks/<name>/` - Harbor task dirs (`task.toml`, instruction, verifier).
+  `task.toml` declares which connectors the task needs via `[mcp_evals].connectors`.
+- `images/base/Dockerfile` - one shared sandbox image with every connector tool
+  installed; copied unchanged into each task's `environment/` at run time.
 
 ```
-mcp-evals run [-c CONFIG] [--integration NAME] [--integrations-dir PATH]
-              [-a AGENT] [-m MODEL] [-t TASK]... [-p DATASET_PATH]
+mcp-evals run [-c CONFIG] [--channel CHANNEL] [--connector NAME]...
+              [--connectors-dir PATH] [-a AGENT] [-m MODEL]
+              [-t TASK]... [-p DATASET_PATH]
               [--task-name GLOB]... [--exclude-task-name GLOB]...
               [--job-name NAME] [-o JOBS_DIR] [-k N_ATTEMPTS] [-n N_CONCURRENT]
               [--env BACKEND] [--env-file PATH] [-y]
@@ -69,23 +75,29 @@ mcp-evals run [-c CONFIG] [--integration NAME] [--integrations-dir PATH]
 
 Every flag overrides the corresponding config field; `mcp-evals run --help` for
 details. Defaults: E2B sandbox (`--env docker` / `--env daytona` to switch),
-`./integrations`, `./jobs`.
+`./connectors`, `./jobs`.
 
 ### Examples
 
-One task, one agent:
+One task, one agent (connectors auto-resolved from `task.toml`):
 
 ```bash
-mcp-evals run --integration my-integration -t tasks/my-task \
+mcp-evals run --channel mcp -t tasks/my-task \
   -a claude-code -m anthropic/claude-haiku-4.5 -y
+```
+
+A multi-connector task (one task, two connectors wired up at once):
+
+```bash
+mcp-evals run --channel mcp -t tasks/cross-actor-and-repo -a oracle -y
 ```
 
 A whole task dataset with name filtering, oracle agent (replays the reference
 solution, no LLM):
 
 ```bash
-mcp-evals run --integration my-integration -a oracle \
-  --dataset-path tasks --task-name 'my-*' -y
+mcp-evals run --channel mcp -a oracle \
+  --dataset-path tasks --task-name 'apify-*' -y
 ```
 
 From a config (see `configs/` in this repo for the schema):
@@ -97,24 +109,24 @@ mcp-evals run -c configs/my-eval.yaml -y
 Eval definitions somewhere else than the cwd (e.g. inside an app repo):
 
 ```bash
-mcp-evals run --integrations-dir evals/integrations -t evals/tasks/my-task \
-  -o evals/jobs --integration my-integration -a claude-code -m ... -y
+mcp-evals run --connectors-dir evals/connectors -t evals/tasks/my-task \
+  -o evals/jobs --channel mcp -a claude-code -m ... -y
 ```
 
 ### Path notes
 
-- `--integrations-dir` is also a config field (`integrations_dir`) and is
-  accepted by `mcp-evals materialize` too; `-o/--jobs-dir` matches `harbor run`.
+- `--connectors-dir` is also a config field (`connectors_dir`); `-o/--jobs-dir`
+  matches `harbor run`.
 - Paths in a config file resolve relative to the cwd, not the config location.
-- Explicit `skills:` entries in `integration.yaml` resolve relative to that
-  yaml's directory and support globs (`skills: ["../../src/lib/skills/*"]`).
-  Each match must be a directory with a `SKILL.md`; a pattern matching nothing
-  is an error. The sibling `skills/` subdir is still auto-discovered and
+- Explicit `skills:` entries in `cell.yaml` resolve relative to that yaml's
+  directory and support globs (`skills: ["../../src/lib/skills/*"]`). Each
+  match must be a directory with a `SKILL.md`; a pattern matching nothing is
+  an error. The sibling `skills/` subdir is still auto-discovered and
   de-duplicated against explicit entries.
-- Integrations with an `environment/` dir are materialized by copying it into
-  each task dir as `tasks/<name>/environment/` (replacing whatever is there).
-  Harbor requires `environment/` inside the task dir, so this cannot be
-  redirected; gitignore `tasks/*/environment/`, as this repo does.
+- Every task's `environment/` is materialized by copying `images/base/` into
+  it (replacing whatever is there). Harbor requires `environment/` inside the
+  task dir, so this cannot be redirected; gitignore `tasks/*/environment/`,
+  as this repo does.
 
 ## Viewing results
 
@@ -142,12 +154,10 @@ Flags: `-p/--port` (default 8501), `--host`, `--no-browser`. See
   "Full output saved to: ..." stub instead of the full content), so `channel_output_chars`
   undercounts for verbose calls; cli/mcpc variants benefit most from this. Token totals
   are unaffected (reported by the API, not derived from content). See `docs/todo.md`.
-- Do not run multiple integration configs for the **same task** in parallel. They
-  materialize into the shared `tasks/<task>/environment/`, so concurrent jobs clobber
-  each other and a job can build the wrong integration's image (silent false passes, or
-  `BuildException` from concurrent cold builds of the same e2b template). Run same-task
-  configs serially, one at a time. See `docs/todo.md` § "E2B template collision across
-  concurrent same-task integration jobs".
+- Channel sweeps over the same task now share one Dockerfile (`images/base/`), so the
+  old "don't run same-task configs in parallel" restriction is lifted. Two runs against
+  the same task with different channels can run concurrently; the materialized
+  `environment/` is identical so the sandbox template cache is reused either way.
 
 ## Credits
 
@@ -171,13 +181,13 @@ Smoke tests against the bundled evals — zero-cost (no LLM, just verifies the
 Harbor + sandbox loop):
 
 ```bash
-uv run mcp-evals run --integration apify-mcp -t tasks/apify-fetch-actor-id -a oracle -y
+uv run mcp-evals run --channel mcp -t tasks/apify-fetch-actor-id -a oracle -y
 ```
 
 Real LLM via OpenRouter (cents):
 
 ```bash
-uv run mcp-evals run --integration apify-mcp -t tasks/apify-fetch-actor-id -a claude-code -m anthropic/claude-haiku-4.5 -y
+uv run mcp-evals run --channel mcp -t tasks/apify-fetch-actor-id -a claude-code -m anthropic/claude-haiku-4.5 -y
 ```
 
 `harbor` is also usable standalone (`pipx install harbor`; add

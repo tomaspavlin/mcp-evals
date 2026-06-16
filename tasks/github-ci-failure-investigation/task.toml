@@ -10,6 +10,9 @@ category = "investigation"
 tags = ["read-only", "investigation"]
 axi_task = "ci_failure_investigation"
 
+[mcp_evals]
+connectors = ["github"]
+
 [verifier]
 timeout_sec = 600.0
 

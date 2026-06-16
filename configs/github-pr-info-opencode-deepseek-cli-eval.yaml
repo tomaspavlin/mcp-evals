@@ -1,5 +1,5 @@
 job_name: github-pr-info-opencode-deepseek-cli-eval
-integration: github-cli
+channel: cli
 tasks:
   - path: tasks/github-pr-info
 agents:

@@ -13,15 +13,15 @@ Evaluations run across different LLMs and agent harnesses. Starting with: **clau
 
 Built on **Harbor** ([docs](https://www.harborframework.com/docs), [gh](https://github.com/harbor-framework/harbor)), the same framework behind [tbench.ai](https://www.tbench.ai/). **Reuse Harbor primitives - do not reimplement.** If you find yourself writing infrastructure that looks like task definition, sandboxing, agent install, verifier, or trial orchestration, stop and find the Harbor abstraction first.
 
-## Targets
+## Connectors
 
-MCP servers to evaluate:
+Third-party services we evaluate (project term: **connector**):
 - Apify - https://mcp.apify.com/
 - GitHub
 - Linear
 - Notion
 
-Start with **read-only tool calls** for simplicity. Test production / staging remote MCPs directly - no need to run them locally.
+Each connector has cells for the different **channels** the agent can reach it through (mcp, cli, mcpc, skill). Multi-connector tasks are supported: one task can use apify + github at the same time. Start with **read-only tool calls** for simplicity. Test production / staging remote MCPs directly - no need to run them locally.
 
 ## Metrics
 
@@ -32,33 +32,37 @@ Start with **read-only tool calls** for simplicity. Test production / staging re
 
 ## CLI
 
-`mcp-evals run` is the primary entrypoint. Built on Harbor's `Job` API (`src/mcp_evals/`); custom Typer CLI mirroring harbor flag names + `--integration`. Auto-loads `.env` from cwd.
+`mcp-evals run` is the primary entrypoint. Built on Harbor's `Job` API (`src/mcp_evals/`); custom Typer CLI mirroring harbor flag names + `--channel`. Auto-loads `.env` from cwd.
 
 From a config:
 ```bash
 uv run mcp-evals run -c configs/<name>.yaml -y
 ```
 
-When the user asks you to run a test, **prefer flag-driven mode over writing a config file** — fewer tokens, no temp yamls to clean up. If a config file is genuinely needed, use the new `RunConfig` schema (`integration:` + `tasks`/`datasets` + `agents`), never the old harbor `JobConfig` shape.
+When the user asks you to run a test, **prefer flag-driven mode over writing a config file** - fewer tokens, no temp yamls to clean up. If a config file is genuinely needed, use the `RunConfig` schema (`channel:` + optional `connectors:` + `tasks`/`datasets` + `agents`), never the old harbor `JobConfig` shape.
 
 Ad-hoc via flags (no config file):
 ```bash
-uv run mcp-evals run --integration apify-mcp -a oracle -t tasks/apify-fetch-actor-id -y
-uv run mcp-evals run --integration apify-mcp -a oracle \
+# Connectors auto-resolved from [mcp_evals].connectors in each task.toml.
+uv run mcp-evals run --channel mcp -a oracle -t tasks/apify-fetch-actor-id -y
+uv run mcp-evals run --channel mcp -a oracle \
   --dataset-path tasks --task-name 'apify-*' --exclude-task-name apify-mcp-connected -y
+
+# Explicit connector list (overrides task.toml):
+uv run mcp-evals run --channel mcp --connector apify --connector github -a oracle -t tasks/cross-actor-and-repo -y
 ```
 
-Flags: `--integration NAME`, `--integrations-dir PATH` (default `./integrations`), `-a/--agent NAME`, `-m/--model MODEL` (omit for oracle), `-t/--task PATH` (repeatable), `-p/--dataset-path PATH`, `--task-name GLOB` (repeatable), `--exclude-task-name GLOB` (repeatable), `--job-name`, `-o/--jobs-dir PATH` (default `./jobs`), `-k/--n-attempts`, `-n/--n-concurrent`, `--env {docker,daytona,e2b,...}` (sandbox backend, default e2b), `--env-file`, `-y`. Each flag overrides whatever's in `-c`. Eval definitions can live in an external repo: see "Usage" in `README.md` (covers `--integrations-dir`, `-o/--jobs-dir`, and yaml-relative `skills:` globs).
+Flags: `--channel {mcp,cli,mcpc,skill}`, `--connector NAME` (repeatable, optional), `--connectors-dir PATH` (default `./connectors`), `-a/--agent NAME`, `-m/--model MODEL` (omit for oracle), `-t/--task PATH` (repeatable), `-p/--dataset-path PATH`, `--task-name GLOB` (repeatable), `--exclude-task-name GLOB` (repeatable), `--job-name`, `-o/--jobs-dir PATH` (default `./jobs`), `-k/--n-attempts`, `-n/--n-concurrent`, `--env {docker,daytona,e2b,...}` (sandbox backend, default e2b), `--env-file`, `-y`. Each flag overrides whatever's in `-c`. Eval definitions can live in an external repo: see "Usage" in `README.md` (covers `--connectors-dir`, `-o/--jobs-dir`, and yaml-relative `skills:` globs).
 
 ## Configs
 
-New schema (our `RunConfig`, ~8 lines): `job_name`, `integration`, `tasks` / `datasets`, `agents` (just `name` + `model_name` + optional `kwargs`), optional `integrations_dir` / `jobs_dir` for eval definitions living outside this repo. Everything else - environment, mcp_servers, skills, instruction append, verifier env, default agent kwargs, concurrency - comes from the named integration + `src/mcp_evals/defaults.py`. See `configs/apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml` for the canonical example.
+Schema (our `RunConfig`, ~8 lines): `job_name`, `channel` (mcp|cli|mcpc|skill), optional `connectors` (auto-resolved from each task's `[mcp_evals].connectors` when omitted), optional `connector_channels` for hybrid runs, `tasks` / `datasets`, `agents` (just `name` + `model_name` + optional `kwargs`), optional `connectors_dir` / `jobs_dir` for eval definitions living outside this repo. Everything else - environment, mcp_servers, skills, instruction append, verifier env, default agent kwargs, concurrency - comes from the loaded connector cells + `src/mcp_evals/defaults.py`. See `configs/apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml` for the canonical example.
 
-Naming: `<dataset>-<harness>-<model>-<tool>-<purpose>.yaml`; `<tool>` is `mcp`, `cli`, `skill`, or `mcpc` (shell-driven MCP via [`@apify/mcpc`](https://github.com/apify/mcpc)); `<purpose>` is `eval`. Keep secrets in `.env`, never in yaml.
+Naming: `<dataset>-<harness>-<model>-<channel>-<purpose>.yaml`; `<channel>` is `mcp`, `cli`, `skill`, or `mcpc` (shell-driven MCP via [`@apify/mcpc`](https://github.com/apify/mcpc)); `<purpose>` is `eval`. Keep secrets in `.env`, never in yaml.
 
 If a run fails with `FileExistsError` (job dir already exists), remove `jobs/<job-name>/` and rerun.
 
-**Do not run multiple integration configs for the same task in parallel.** They materialize into the shared `tasks/<task>/environment/`, so concurrent jobs clobber each other and a job can build the wrong integration's image (e.g. apify-mcpc silently builds the apify-cli image, `mcpc` absent, agents fall back to `curl`, results are false passes). Run same-task configs serially, one at a time. See `docs/todo.md` § "E2B template collision across concurrent same-task integration jobs".
+Materialize now uses **one shared base image** (`images/base/Dockerfile`) with every CLI / MCP proxy installed, copied unchanged into each task's `environment/`. Channel selection happens at runtime (which `mcp_servers`, instruction appends, and setup scripts the agent gets). Same Dockerfile across every run = stable `dirhash` = the sandbox template cache stays hot. The old per-integration Dockerfile collision (different integrations clobbering each other into `tasks/<task>/environment/` concurrently) no longer applies; same-task channel sweeps can now run in parallel.
 
 ## Models
 
@@ -70,13 +74,19 @@ Current models:
 
 Adding a new model: confirm the desired upstream provider serves it at `https://openrouter.ai/<provider>/<model>`, create the matching `@preset/<provider>-only` on OpenRouter, then reference it via the combined `model@preset/slug` syntax.
 
-## Integrations
+## Connectors and channels
 
-`integrations/<name>/` bundles the (MCP servers | skills | instruction append | verifier env) tuple that distinguishes a tool-access strategy for the same underlying task. Files: `integration.yaml` + sibling `instruction.md` + optional `skills/<skill-name>/SKILL.md` + optional `setup.sh` + optional `teardown.sh` (all auto-discovered by the loader). `setup.sh` runs in the sandbox after env start and before the agent, with `environment_env` resolved in scope - use it for pre-auth (e.g. `apify login --token "$APIFY_TOKEN"`) so CLI/skill integrations match the implicit auth MCP gets. `teardown.sh` runs after the agent and before artifact collection - use it to post-process the agent's working tree (build, lint, snapshot) so the verifier grades the output. Setup failure aborts the trial; teardown failure is logged and swallowed (a failed build is signal the verifier wants, not a trial abort). Setup gets `setup_env`, teardown gets `teardown_env`, neither leaks into the agent's persistent env. To add an integration, drop a new directory; reference it via `integration:` in a `RunConfig`.
+Tool access is split into two axes:
+- **channel** = how the agent reaches a connector: `mcp`, `cli`, `mcpc`, `skill`. Picked per run.
+- **connector** = which third-party service: `apify`, `github`, `linear`, `notion`. Picked per task.
+
+Each (connector, channel) lives at `connectors/<connector>/<channel>/`: `cell.yaml` (mcp_servers / env / setup_env / teardown_env) + sibling `instruction.md` + optional `setup.sh` + optional `teardown.sh` + optional `skills/<skill-name>/SKILL.md`. All auto-discovered by the loader. `setup.sh` runs in the sandbox after env start and before the agent, with `setup_env` resolved in scope - use it for pre-auth (e.g. `apify login --token "$APIFY_TOKEN"`) so CLI/skill cells match the implicit auth MCP gets. `teardown.sh` runs after the agent and before artifact collection. Setup failure aborts the trial; teardown failure is logged and swallowed. Neither setup nor teardown env leaks into the agent's persistent env. To add a new connector, drop a new directory under `connectors/`.
+
+Each task declares which connectors it needs via `[mcp_evals].connectors = [...]` in `task.toml`. A run picks one `channel:` (applied to every connector by default) or per-connector overrides via `connector_channels:`. The verifier sees the resulting per-connector channel map via `MCP_EVALS_CHANNELS_JSON` (+ `MCP_EVALS_CHANNEL` shorthand when all connectors share a channel).
 
 ## Harbor patches
 
-`src/mcp_evals/_patches/` holds runtime monkey-patches for harbor upstream gaps (codex MCP env propagation, E2B free-tier sandbox timeout, integration `setup.sh` / `teardown.sh` exec in the sandbox). Prefer upstreaming over patching when feasible.
+`src/mcp_evals/_patches/` holds runtime monkey-patches for harbor upstream gaps (codex MCP env propagation, E2B free-tier sandbox timeout, connector-cell `setup.sh` / `teardown.sh` exec in the sandbox). Prefer upstreaming over patching when feasible.
 
 ## Metrics
 

@@ -7,8 +7,8 @@ from pydantic import BaseModel, Field
 
 
 class RunAgentConfig(BaseModel):
-    """Thin per-agent config. integration provides mcp_servers/skills; user just
-    picks the harness + model and optionally overrides agent kwargs."""
+    """Thin per-agent config. Channel + connectors provide mcp_servers/skills;
+    user just picks the harness + model and optionally overrides agent kwargs."""
 
     name: str
     model_name: str | None = None
@@ -17,13 +17,23 @@ class RunAgentConfig(BaseModel):
 
 class RunConfig(BaseModel):
     """Our own thin config schema. Expanded to a harbor JobConfig at runtime by
-    job_builder.build_job_config(). `integration` and `agents` are typed as
-    optional because the CLI can supply them via flags; the CLI validates that
-    they're set before calling build_job_config()."""
+    job_builder.build_job_config().
+
+    Tool access is split into two axes:
+    - `channel`: how the agent reaches the connectors - `mcp`, `cli`, `mcpc`,
+      `skill`. One channel applies to every connector by default.
+    - `connectors`: which third-party services the task uses (e.g. `apify`,
+      `github`). Auto-populated from `[mcp_evals].connectors` in each task's
+      task.toml when not set on the run.
+    - `connector_channels`: optional per-connector override of `channel`,
+      for hybrid runs (e.g. github via MCP but apify via CLI).
+    """
 
     job_name: str | None = None
-    integration: str | None = None
-    integrations_dir: Path | None = None
+    channel: str | None = None
+    connectors: list[str] = Field(default_factory=list)
+    connector_channels: dict[str, str] = Field(default_factory=dict)
+    connectors_dir: Path | None = None
     jobs_dir: Path | None = None
     environment_type: str | None = None
     n_concurrent_trials: int | None = None

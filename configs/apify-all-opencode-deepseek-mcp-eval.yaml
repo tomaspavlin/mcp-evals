@@ -1,5 +1,5 @@
 job_name: apify-all-opencode-deepseek-mcp-eval
-integration: apify-mcp
+channel: mcp
 n_concurrent_trials: 2
 datasets:
   - path: tasks

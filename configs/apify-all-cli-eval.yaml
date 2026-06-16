@@ -1,5 +1,5 @@
 job_name: apify-all-cli-eval
-integration: apify-cli
+channel: cli
 n_concurrent_trials: 2
 datasets:
   - path: tasks

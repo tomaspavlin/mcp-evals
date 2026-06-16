@@ -1,0 +1,19 @@
+version = "1.0"
+
+[task]
+name = "mcp-evals/cross-actor-and-repo"
+description = "Look up an Apify Actor and a GitHub repo, then emit both facts as JSON."
+
+[metadata]
+difficulty = "easy"
+category = "cross-connector"
+tags = ["read-only", "apify", "github"]
+
+[mcp_evals]
+connectors = ["apify", "github"]
+
+[verifier]
+timeout_sec = 60.0
+
+[agent]
+timeout_sec = 240.0

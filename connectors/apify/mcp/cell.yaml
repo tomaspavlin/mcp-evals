@@ -1,0 +1,7 @@
+mcp_servers:
+  - name: apify
+    transport: stdio
+    command: /usr/local/bin/apify-mcp-proxy
+    args: []
+environment_env:
+  APIFY_TOKEN: ${APIFY_TOKEN}

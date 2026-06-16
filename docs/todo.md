@@ -34,9 +34,9 @@ Workaround: `src/mcp_evals/_patches/codex_mcp_env.py` monkey-patches `_build_reg
 
 Harbor exposes `Job.add_hook(TrialEvent.AGENT_START, ...)` but the `TrialHookEvent` payload (`harbor/trial/hooks.py:21`) carries only `event`, `trial_id`, `task_name`, `config`, `result` - not the live `Trial` or `agent_environment`. So a hook callback can't `exec()` into the running sandbox. `EnvironmentConfig` also has no `setup_script` field, and single-step tasks have no equivalent of multi-step's `steps/<name>/workdir/setup.sh`.
 
-Workaround: `src/mcp_evals/_patches/integration_setup_script.py` monkey-patches `Trial._prepare` to exec an integration-provided `setup.sh` after env start + healthcheck + skill upload, before agent setup. Non-zero exit fails the trial loudly. Used by `integrations/apify-cli/setup.sh` and `integrations/apify-skill/setup.sh` to pre-run `apify login --token "$APIFY_TOKEN"`.
+Workaround: `src/mcp_evals/_patches/integration_setup_script.py` monkey-patches `Trial._prepare` to exec a connector-cell-provided `setup.sh` after env start + healthcheck + skill upload, before agent setup. Non-zero exit fails the trial loudly. Used by `connectors/apify/cli/setup.sh` and `connectors/apify/skill/setup.sh` to pre-run `apify login --token "$APIFY_TOKEN"`.
 
-Upstream ask: add `EnvironmentConfig.setup_script` (or expose `agent_environment` on the hook event). Remove the patch and `Integration.setup_script_path` plumbing once landed.
+Upstream ask: add `EnvironmentConfig.setup_script` (or expose `agent_environment` on the hook event). Remove the patch and `ConnectorCell.setup_script_path` plumbing once landed.
 
 ## E2B sandbox timeout hardcoded to 24h (Harbor gap)
 
@@ -50,13 +50,9 @@ Codex CLI tries `wss://openrouter.ai/api/v1/responses` first; OpenRouter doesn't
 
 No clean fix without either real OpenAI auth (bypass OpenRouter) or OpenRouter adding ws Responses support. Document and ignore for now.
 
-## Shared docker base image for MCP proxies
+## Shared docker base image for MCP proxies (DONE)
 
-Today each apify task duplicates `apify-mcp-proxy.sh` and re-installs `mcp-remote` in its Dockerfile (`tasks/apify-*/environment/`). The proxy scripts across the three apify tasks are byte-identical.
-
-Plan: build one `mcp-evals-apify:base` image with node + `mcp-remote` + proxy baked in. Per-task Dockerfiles become a single `FROM mcp-evals-apify:base`. Proxy source moves to `integrations/apify-mcp/proxy.sh` + `integrations/apify-mcp/Dockerfile.base`, built by a `mcp-evals build-integration apify-mcp` subcommand. Same pattern for github / linear / notion MCPs.
-
-Deferred until after `docs/python-cli-migration.md` lands — needs the CLI in place first.
+**Status (2026-06-15):** Done as part of the connector/channel refactor. `images/base/Dockerfile` installs apify-cli + gh CLI + mcp-remote + @apify/mcpc + copies both proxy scripts; `materialize_environment` (`src/mcp_evals/connectors/materialize.py`) copies that dir unchanged into every `tasks/<task>/environment/`. Per-task Dockerfiles are gone.
 
 ## Output metrics & visualisation
 
@@ -101,7 +97,13 @@ Fix direction (ordered by value):
 
 Upstream ask: land (1) in harbor's claude-code adapter so all downstream consumers benefit. Mark Group D and any future "agent delegated to subagent" cells as untrusted on the channel criterion until then.
 
-## E2B template collision across concurrent same-task integration jobs (our bug + Harbor gap)
+## E2B template collision across concurrent same-task integration jobs (FIXED via shared base image)
+
+**Status (2026-06-15):** Race A is gone. The connector/channel refactor moved every task onto a single shared `images/base/Dockerfile` (all CLIs + MCP proxies pre-installed). `materialize_environment` now copies the same dir into every `tasks/<task>/environment/` regardless of channel, so the dirhash is identical across channel sweeps and the wrong-image race cannot happen. Race B (e2b cold-build thundering herd on a not-yet-cached template) still exists, but is independent of channel selection; it only kicks in for parallel cold builds of the same alias. The "don't run same-task configs in parallel" warnings have been removed from `README.md` and `AGENTS.md`. Race-B notes below are kept for upstream reference.
+
+---
+
+### Historical: E2B template collision across concurrent same-task integration jobs (our bug + Harbor gap)
 
 Diagnosed 2026-06-15 from the `apify-fetch-actor-id` matrix (Group B in `docs/agent-integration-matrix.md`). Two distinct races; the first silently corrupts results, the second is flaky infra noise.
 

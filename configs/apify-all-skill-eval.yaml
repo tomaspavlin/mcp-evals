@@ -1,5 +1,5 @@
 job_name: apify-all-skill-eval
-integration: apify-skill
+channel: skill
 n_concurrent_trials: 2
 datasets:
   - path: tasks

@@ -1,6 +1,6 @@
-# Task pattern: MCP and skill variants
+# Task pattern: connectors and channels
 
-How we wire an auth'd remote MCP or a skill into a Harbor task. The same task dir backs both variants — the tool choice lives in the job config, not `task.toml`.
+How we wire auth'd remote MCPs, CLIs, and skills into a Harbor task. The same task dir backs every channel - the tool choice lives in the job config, not `task.toml`. Tasks can compose multiple connectors (e.g. Apify + GitHub) in a single trial.
 
 ## The auth blocker
 
@@ -8,43 +8,49 @@ Harbor's `MCPServerConfig` accepts `name | transport | url | command | args`. **
 
 ## The workaround: stdio wrapper
 
-- Declare a stdio MCP whose `command` is a wrapper script.
+- Declare a stdio MCP whose `command` is a wrapper script baked into the shared base image.
 - Wrapper runs `mcp-remote` (npm proxy), which speaks stdio locally and forwards to the remote streamable-http endpoint with an injected `Authorization` header.
-- Token reaches the container via `[environment.env]` in `task.toml`, which IS supported by Harbor and forwards from host `os.environ`.
+- Token reaches the container via `environment_env` on the cell, materialized into `[environment.env]` at job build time, which IS supported by Harbor and forwards from host `os.environ`.
 
 ## File layout
 
 ```
 tasks/<name>/
-  task.toml                  # per-task timeouts; no MCP block, no env block
-  instruction.md             # task only - no mention of tool variant
-  environment/               # gitignored; materialized from the integration on `mcp-evals run`
+  task.toml                  # per-task timeouts + [mcp_evals].connectors = [...]
+  instruction.md             # task only - no mention of channel
+  environment/               # gitignored; materialized from images/base/ on `mcp-evals run`
   tests/
     test.sh, check.py        # Reward Kit verifier (see below)
   solution/solve.sh
 
-integrations/<vendor>-<variant>/
-  integration.yaml           # name, mcp_servers, skills, environment_env, verifier_env
+connectors/<connector>/<channel>/
+  cell.yaml                  # mcp_servers, environment_env, setup_env, verifier_env
   instruction.md             # auto-discovered, appended via extra_instruction_paths
-  setup.sh                   # optional, auto-discovered; exec'd in the sandbox after env
-                             # start, before the agent runs. Use for pre-auth (CLI/skill).
-  environment/               # auto-discovered Dockerfile + proxy script; copied into the task at run time
-    Dockerfile               # node:22-bookworm + `npm install -g mcp-remote apify-cli`
-    apify-mcp-proxy.sh       # the wrapper (see template below)
-  skills/<name>/SKILL.md     # optional, auto-discovered
+  setup.sh                   # optional; exec'd in the sandbox after env start, before
+                             # the agent. Use for pre-auth (e.g. `apify login`).
+  teardown.sh                # optional; runs after the agent, before artifact collection.
+  skills/<name>/SKILL.md     # optional, auto-discovered (skill channel)
+
+images/base/
+  Dockerfile                 # node:22-bookworm + every CLI + mcp-remote + mcpc + proxies
+  apify-mcp-proxy.sh         # one wrapper per connector, all pre-installed
+  github-mcp-proxy.sh
 
 configs/
-  <task>-<harness>-<model>-<variant>-eval.yaml   # RunConfig: integration: <vendor>-<variant>
+  <task>-<harness>-<model>-<channel>-eval.yaml   # RunConfig: channel: <name>
 ```
 
-The materialize step (`mcp-evals run` does it automatically; `mcp-evals materialize` exposes it standalone) copies `integrations/<integration>/environment/` into each target task's `environment/` dir before harbor sees the task. Per-task env dirs are gitignored - the integration owns the source of truth.
+The materialize step (`mcp-evals run` does it automatically; `mcp-evals materialize` exposes it standalone) copies `images/base/` into each target task's `environment/` dir before harbor sees the task. The Dockerfile is identical across all runs, so the sandbox template cache stays hot. Per-task env dirs are gitignored - `images/base/` is the source of truth.
 
 ## task.toml snippet
 
-Only per-task overrides (timeouts, optional verifier env). No `[[environment.mcp_servers]]`, no token passthrough, no resource block - those are hoisted to the integration / `defaults.py`.
+Per-task overrides (timeouts, optional verifier env) plus a `[mcp_evals]` block listing which connectors the task needs. No `[[environment.mcp_servers]]`, no token passthrough - those are hoisted to the cell / `defaults.py`.
 
 ```toml
 version = "1.0"
+
+[mcp_evals]
+connectors = ["apify"]                  # or ["apify", "github"] for cross-connector
 
 [verifier]
 timeout_sec = 60.0
@@ -53,47 +59,43 @@ timeout_sec = 60.0
 timeout_sec = 180.0
 ```
 
-Token passthrough lives on the integration:
+Token passthrough lives on the cell:
 
 ```yaml
-# integrations/apify-mcp/integration.yaml
+# connectors/apify/mcp/cell.yaml
 environment_env:
   APIFY_TOKEN: ${APIFY_TOKEN}        # resolved against host env at job build time
 ```
 
-## Integration: pick the tool variant
+## Cell: pick the channel for one connector
 
-The integration decides MCP vs CLI vs skill. `instruction.md` in the task stays tool-agnostic; the integration's `instruction.md` tells the agent which tool to use. The RunConfig references the integration by name.
+A cell decides how one connector is exposed for one channel. `instruction.md` in the task stays channel-agnostic; the cell's `instruction.md` tells the agent which tool to use. The RunConfig picks `channel:` (one value applied to every connector the task declares) or `connector_channels:` (per-connector map for hybrid runs).
 
-MCP variant (`integrations/apify-mcp/integration.yaml`):
+MCP cell (`connectors/apify/mcp/cell.yaml`):
 
 ```yaml
-name: apify-mcp
 mcp_servers:
   - name: apify
     transport: stdio
     command: /usr/local/bin/apify-mcp-proxy
     args: []
-skills: []
 environment_env:
   APIFY_TOKEN: ${APIFY_TOKEN}
-verifier_env:
-  EXPECTED_CHANNEL: mcp
 ```
 
-Skill variant (Harbor uploads the host dir into `/harbor/skills/<name>/` at trial start, then copies into each harness's skill dir: `~/.claude/skills/`, `~/.config/opencode/skills/`, `$HOME/.agents/skills/` for claude-code, opencode, codex respectively):
+Skill cell (Harbor uploads the host dir into `/harbor/skills/<name>/` at trial start, then copies into each harness's skill dir: `~/.claude/skills/`, `~/.config/opencode/skills/`, `$HOME/.agents/skills/` for claude-code, opencode, codex respectively):
 
 ```yaml
-name: apify-skill
+# connectors/apify/skill/cell.yaml
 mcp_servers: []
-# skills/<name>/SKILL.md under the integration dir is auto-discovered
-# skill is just instructions to use the apify CLI, so the expected
-# tool-call channel is the same as apify-cli.
-verifier_env:
-  EXPECTED_CHANNEL: cli
+# skills/<name>/SKILL.md under the cell dir is auto-discovered
+# skill is just instructions to use the apify CLI, so the channel the
+# verifier sees is the same as the cli cell.
+setup_env:
+  APIFY_TOKEN: ${APIFY_TOKEN}
 ```
 
-`job_builder` fans `mcp_servers` and `skills` into every agent in the RunConfig and appends the integration's `instruction.md` via the job-level `extra_instruction_paths` field. Each instruction file is appended to the task's `instruction.md` with `\n\n` separators (`src/harbor/models/task/task.py:181`).
+`job_builder` resolves `(connectors, channel | connector_channels)` against `task.toml`, fans the matched cells' `mcp_servers` and `skills` into every agent, and appends each cell's `instruction.md` via the job-level `extra_instruction_paths` field. Each instruction file is appended to the task's `instruction.md` with `\n\n` separators (`src/harbor/models/task/task.py:181`).
 
 Harbor merges `task.config.environment.mcp_servers` with `agent.mcp_servers` by name (last wins). There's no way to disable a task-level MCP from the yaml, which is why the task no longer declares one. See `src/harbor/trial/trial.py:641`.
 
@@ -122,7 +124,7 @@ The `sed` is not cosmetic. `mcp-remote` logs the raw `Authorization` header to s
 
 ## Verifier pattern (Reward Kit)
 
-`tests/test.sh` is a one-liner that runs [Reward Kit](https://www.harborframework.com/docs/rewardkit); it discovers criteria in `/tests/`, evaluates them against the workspace at `/app`, and writes `/logs/verifier/reward.json`. No pytest, no manual reward file.
+`tests/test.sh` is a one-liner that runs [Reward Kit](https://www.harborframework.com/docs/rewardkit); it discovers criteria in `/tests/`, evaluates them against the workspace at `/app`, and writes `/logs/verifier/reward.json`. No pytest, no manual reward file. The verifier reads the per-connector channel map from `MCP_EVALS_CHANNELS_JSON` (primary), `MCP_EVALS_CHANNEL` (shorthand when one channel applies to all), and `MCP_EVALS_CONNECTORS` (csv of connector names).
 
 ```bash
 # tests/test.sh
@@ -151,16 +153,17 @@ def actor_id_matches(workspace: Path) -> bool:
     return (workspace / "actor_id.txt").read_text().strip() == "moJRLRc85AitArpNN"
 ```
 
-## Adapt for another vendor
+## Adapt for another connector
 
-1. Copy `tasks/apify-fetch-actor-id/` to `tasks/<vendor>-<task>/` (drop the `environment/` dir - it's now owned by the integration).
-2. Rewrite `instruction.md` (task only, no tool wording) and `tests/check.py` for the new vendor.
+1. Copy `tasks/apify-fetch-actor-id/` to `tasks/<connector>-<task>/` (drop the `environment/` dir - it's now owned by `images/base/`).
+2. Rewrite `instruction.md` (task only, no channel wording) and `tests/check.py` for the new connector. Set `[mcp_evals].connectors = ["<connector>"]` in `task.toml`.
 3. In `.env.example` + `.env`: add the new token.
-4. Create `integrations/<vendor>-<variant>/` with `integration.yaml` (`mcp_servers` and/or `skills`, `environment_env`, `verifier_env` with `EXPECTED_CHANNEL`), `instruction.md` (tool wording), and `environment/` (Dockerfile + proxy script). In the proxy script change the URL, env var name, and redaction regex.
-5. Add a RunConfig under `configs/` with `integration: <vendor>-<variant>` and `tasks: - path: tasks/<vendor>-<task>`.
+4. Create `connectors/<connector>/<channel>/` cells (one per channel you support) with `cell.yaml` (`mcp_servers` and/or `setup_env`, `environment_env`) and `instruction.md` (channel wording). If a new MCP proxy is needed, drop a `<connector>-mcp-proxy.sh` into `images/base/` and install it from the Dockerfile.
+5. Add a RunConfig under `configs/` with `channel: <name>` and `tasks: - path: tasks/<connector>-<task>`. See `configs/apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml` for the canonical example.
 
 ## Existing tasks
 
-- `tasks/apify-fetch-actor-id/` - real Apify call, not gameable. MCP + skill variants both wired.
-- `tasks/apify-scrape-page/` - runs an Actor and reads its dataset. MCP + skill variants both wired.
-- `tasks/apify-mcp-connected/` - connection smoke, gameable. MCP-only (no skill equivalent makes sense).
+- `tasks/apify-fetch-actor-id/` - real Apify call, not gameable. All four channels (mcp/cli/mcpc/skill) wired.
+- `tasks/apify-scrape-page/` - runs an Actor and reads its dataset. All four channels wired.
+- `tasks/apify-mcp-connected/` - connection smoke, gameable. MCP-only (no skill/cli equivalent makes sense).
+- `tasks/cross-actor-and-repo/` - cross-connector: looks up an Apify Actor and a GitHub repo in one trial; declares `connectors = ["apify", "github"]` and can mix channels via `connector_channels:`.

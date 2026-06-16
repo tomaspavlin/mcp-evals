@@ -15,9 +15,9 @@ from harbor.viewer.scanner import JobScanner
 REPO_ROOT = Path(__file__).resolve().parents[2]
 # Set by `mcp-evals dashboard` so external projects can point at their own jobs dir.
 JOBS_DIR = Path(os.environ.get("MCP_EVALS_JOBS_DIR", REPO_ROOT / "jobs")).expanduser().resolve()
-# Fallback parse for jobs predating MCP_EVALS_INTEGRATION in verifier env.
-KNOWN_INTEGRATION_TYPES = {"mcp", "cli", "skill", "mcpc"}
-GROUP_KEYS = ["trial", "job", "integration", "integration_type", "integration_target", "task", "agent", "model"]
+# Fallback parse for jobs predating MCP_EVALS_CHANNEL in verifier env.
+KNOWN_CHANNELS = {"mcp", "cli", "skill", "mcpc"}
+GROUP_KEYS = ["trial", "job", "connectors", "channel", "connector", "task", "agent", "model"]
 
 # Shared trajectory-metric logic (stdlib-only). Loaded by file path because the
 # dashboard venv has streamlit+harbor but not the mcp_evals package, and
@@ -51,11 +51,11 @@ def read_json(path: Path) -> dict | None:
         return None
 
 
-def _fallback_integration_type(job_name: str) -> str:
-    # Used only when the trial's verifier env lacks MCP_EVALS_INTEGRATION.
-    # Naming convention (AGENTS.md): <dataset>-<harness>-<model>-<tool>-<purpose>.
+def _fallback_channel(job_name: str) -> str:
+    # Used only when the trial's verifier env lacks MCP_EVALS_CHANNEL.
+    # Naming convention (AGENTS.md): <dataset>-<harness>-<model>-<channel>-<purpose>.
     for tok in job_name.split("-"):
-        if tok in KNOWN_INTEGRATION_TYPES:
+        if tok in KNOWN_CHANNELS:
             return tok
     return "?"
 
@@ -274,7 +274,7 @@ def _show_step_dialog(step: dict, kinds: list[str]) -> None:
 
 def _render_trajectory_steps(
     steps: list[dict],
-    integration_target: str | None,
+    connector: str | None,
     channel: str | None,
     state_key: str,
 ) -> None:
@@ -289,7 +289,7 @@ def _render_trajectory_steps(
         step_kinds.append([
             metrics_mod.classify_call(
                 {"function_name": tc.get("function_name") or "?", "arguments": tc.get("arguments") or {}},
-                integration_target, channel,
+                connector, channel,
             )
             for tc in s["tool_calls"]
         ])
@@ -346,21 +346,31 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
             continue
         n_in, n_cache, n_out, cost = tr.compute_token_cost_totals()
         errored = tr.exception_info is not None
-        channel = None
-        integration = None
+        channels_by_connector: dict[str, str] = {}
         if tr.config and tr.config.verifier:
-            channel = tr.config.verifier.env.get("EXPECTED_CHANNEL") or None
-            integration = tr.config.verifier.env.get("MCP_EVALS_INTEGRATION") or None
-        integration_target, integration_type = metrics_mod.parse_integration(integration)
-        if integration_target is None:
-            integration_target = metrics_mod.target_for_task(tr.task_name or "")
-        if integration_type is None:
-            integration_type = _fallback_integration_type(job_name)
+            channels_by_connector = metrics_mod.parse_run_axes(tr.config.verifier.env)
+        if not channels_by_connector:
+            # Old jobs (pre channel/connector split) only set EXPECTED_CHANNEL or
+            # encoded both axes in the job name. Best-effort recovery.
+            legacy_channel = None
+            if tr.config and tr.config.verifier:
+                legacy_channel = tr.config.verifier.env.get("EXPECTED_CHANNEL") or None
+            legacy_channel = legacy_channel or _fallback_channel(job_name)
+            fallback_connector = metrics_mod.connector_for_task(tr.task_name or "")
+            if fallback_connector and legacy_channel and legacy_channel != "?":
+                channels_by_connector = {fallback_connector: legacy_channel}
+        connector_keys = sorted(channels_by_connector)
+        connectors_str = ",".join(connector_keys) or "?"
+        channel_values = sorted(set(channels_by_connector.values()))
+        channel_str = channel_values[0] if len(channel_values) == 1 else (
+            "hybrid" if channel_values else "?"
+        )
+        primary_connector = connector_keys[0] if len(connector_keys) == 1 else None
         trial_dir = JOBS_DIR / job_name / trial_name
         details = read_json(trial_dir / "verifier" / "reward-details.json")
         passed = metrics_mod.tests_passed(details)
         traj = read_json(trial_dir / "agent" / "trajectory.json") or {}
-        trial_metrics, per_call = metrics_mod.compute_trial_metrics(traj, channel, integration_target)
+        trial_metrics, per_call = metrics_mod.compute_trial_metrics(traj, channels_by_connector)
         values = metrics_mod.call_values(per_call)
 
         def _secs(ti):
@@ -377,10 +387,9 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
         out.append({
             "job": job_name,
             "trial": trial_name,
-            "integration": integration or "?",
-            "integration_type": integration_type,
-            "integration_target": integration_target,
-            "channel": channel,
+            "connectors": connectors_str,
+            "channel": channel_str,
+            "connector": primary_connector,
             "task": tr.task_name,
             "agent": tr.agent_info.name if tr.agent_info else None,
             "model": model_name,
@@ -711,8 +720,8 @@ def _trial_row(t: dict) -> dict:
         "trial": t["trial"],
         "job": t["job"],
         "task": t.get("task") or "?",
-        "integration": t["integration"],
-        "integration_type": t["integration_type"],
+        "connectors": t["connectors"],
+        "channel": t["channel"],
         "model": t["model"],
         "tests_passed": t["tests_passed"],
         "reward": t.get("reward"),
@@ -757,12 +766,12 @@ with tab_trials:
 
         x_axis = st.selectbox("X axis", ["time (s)", "step", "trial"], index=0)
         only_channel = st.checkbox("Show only channel events", value=False)
-        # Style: color = integration_type, dash = (model, agent). Trials sharing all
-        # three render identically (intentional). Each distinct (integration_type,
+        # Style: color = channel, dash = (model, agent). Trials sharing all
+        # three render identically (intentional). Each distinct (channel,
         # model, agent) combination contributes a single legend entry.
         palette = px.colors.qualitative.Plotly
         dash_cycle = ["solid", "dot", "dash", "longdash", "dashdot", "longdashdot"]
-        modes_seen = sorted({t["integration_type"] for t in picked_trials})
+        modes_seen = sorted({t["channel"] for t in picked_trials})
         ma_seen = sorted({(t.get("model") or "?", t.get("agent") or "?") for t in picked_trials})
         color_for = {v: palette[i % len(palette)] for i, v in enumerate(modes_seen)}
         dash_for = {ma: dash_cycle[i % len(dash_cycle)] for i, ma in enumerate(ma_seen)}
@@ -775,7 +784,7 @@ with tab_trials:
             kinds = [
                 metrics_mod.classify_call(
                     {"function_name": m["name"], "arguments": m["args"]},
-                    t["integration_target"], t["channel"],
+                    t["connector"], t["channel"],
                 )
                 for m in tl["marks"]
             ]
@@ -783,7 +792,7 @@ with tab_trials:
             for m, kind in zip(tl["marks"], kinds):
                 tool_call_rows.append({
                     "trial": t["trial"],
-                    "integration_type": t["integration_type"],
+                    "channel": t["channel"],
                     "t_s": round(m["t"], 2),
                     "cum_tokens": m["cum_tokens"],
                     "tool": m["name"],
@@ -792,7 +801,7 @@ with tab_trials:
                 })
             if not tl["line"]:
                 continue
-            mode = t["integration_type"]
+            mode = t["channel"]
             ma = (t.get("model") or "?", t.get("agent") or "?")
             color = color_for[mode]
             dash = dash_for[ma]
@@ -877,7 +886,8 @@ with tab_trials:
             verdict = "pass" if t["tests_passed"] else ("error" if t["errored"] else "fail")
             agent = t.get("agent") or "?"
             model = t.get("model") or "?"
-            integration = t.get("integration") or "?"
+            connectors_label = t.get("connectors") or "?"
+            channel_label = t.get("channel") or "?"
             task = t.get("task") or "?"
             trial_path = t.get("trial_uri") or str(JOBS_DIR / t["job"] / t["trial"])
             if trial_path.startswith("file://"):
@@ -905,7 +915,8 @@ with tab_trials:
                 f"**Trial:** `{t['trial']}`",
                 f"**Job:** `{t['job']}`",
                 f"**Task:** `{task}`",
-                f"**Integration:** `{integration}`",
+                f"**Connectors:** `{connectors_label}`",
+                f"**Channel:** `{channel_label}`",
                 f"**Agent:** {agent}",
                 f"**Model:** {model}",
                 f"**Verdict:** {verdict}",
@@ -957,7 +968,7 @@ with tab_trials:
                 steps_data = load_trial_steps(t["job"], t["trial"], mtimes.get(t["job"], 0.0))
                 _render_trajectory_steps(
                     steps_data,
-                    t["integration_target"],
+                    t["connector"],
                     t["channel"],
                     state_key=f"{t['job']}_{t['trial']}",
                 )
@@ -1019,12 +1030,12 @@ with tab_trials:
                 _render_trial_details(by_name[name])
 
 with tab_grid:
-    # Per (task, agent+model, integration_type) avg-tokens stacked bars, faceted by row=task, col=agent+model.
+    # Per (task, agent+model, channel) avg-tokens stacked bars, faceted by row=task, col=agent+model.
     grid_trials = [t for t in trials if t["tests_passed"]] if passed_only else trials
     cells: dict[tuple, dict] = defaultdict(lambda: {"n_input": 0, "n_cache": 0, "n_output": 0, "count": 0})
     for t in grid_trials:
         am = f"{t.get('agent') or '?'} / {t.get('model') or '?'}"
-        key = (t["task"], am, t["integration_type"])
+        key = (t["task"], am, t["channel"])
         c = cells[key]
         c["n_input"] += t["n_input"]
         c["n_cache"] += t["n_cache"]
@@ -1033,19 +1044,19 @@ with tab_grid:
     grid_rows = []
     for (task, am, mode), c in cells.items():
         n = c["count"] or 1
-        grid_rows.append({"task": task, "agent_model": am, "integration_type": mode,
+        grid_rows.append({"task": task, "agent_model": am, "channel": mode,
                           "kind": "input (cached)", "tokens": c["n_cache"] / n})
-        grid_rows.append({"task": task, "agent_model": am, "integration_type": mode,
+        grid_rows.append({"task": task, "agent_model": am, "channel": mode,
                           "kind": "input (uncached)", "tokens": max(0, c["n_input"] - c["n_cache"]) / n})
-        grid_rows.append({"task": task, "agent_model": am, "integration_type": mode,
+        grid_rows.append({"task": task, "agent_model": am, "channel": mode,
                           "kind": "output", "tokens": c["n_output"] / n})
     if not grid_rows:
         st.info("No trial data in the selected jobs (with 'passed trials only' on, only passed trials count).")
     else:
-        mode_order = sorted({r["integration_type"] for r in grid_rows})
+        mode_order = sorted({r["channel"] for r in grid_rows})
         fig_grid = px.bar(
             grid_rows,
-            x="integration_type",
+            x="channel",
             y="tokens",
             color="kind",
             facet_col="agent_model",
@@ -1053,7 +1064,7 @@ with tab_grid:
             barmode="stack",
             category_orders={
                 "kind": ["input (cached)", "input (uncached)", "output"],
-                "integration_type": mode_order,
+                "channel": mode_order,
             },
             color_discrete_map={
                 "input (cached)": "#9ecae1",
@@ -1093,7 +1104,7 @@ with tab_matrix:
         )
     with c2:
         col_dims = st.multiselect(
-            "Columns", matrix_dim_options, default=["integration_type"], key="mx_cols",
+            "Columns", matrix_dim_options, default=["channel"], key="mx_cols",
         )
     with c3:
         metric = st.selectbox(

@@ -10,6 +10,9 @@ category = "multi_step"
 tags = ["read-only", "multi-step"]
 axi_task = "pr_then_checks"
 
+[mcp_evals]
+connectors = ["github"]
+
 [verifier]
 timeout_sec = 420.0
 

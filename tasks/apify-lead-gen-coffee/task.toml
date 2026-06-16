@@ -9,6 +9,9 @@ difficulty = "hard"
 category = "lead-generation"
 tags = ["read-only", "multi-actor", "chain", "filter", "judge"]
 
+[mcp_evals]
+connectors = ["apify"]
+
 [verifier]
 timeout_sec = 300.0
 

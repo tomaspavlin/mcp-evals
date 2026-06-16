@@ -9,8 +9,8 @@ from mcp_evals.metrics import (
     call_errored,
     classify_call,
     compute_trial_metrics,
+    connector_for_task,
     failed_criteria,
-    target_for_task,
 )
 from mcp_evals.metrics import tests_passed as check_tests_passed
 
@@ -116,7 +116,7 @@ class TestComputeTrialMetrics:
         }
 
     def test_metrics(self):
-        metrics, per_call = compute_trial_metrics(self._trajectory(), "mcp", "apify")
+        metrics, per_call = compute_trial_metrics(self._trajectory(), {"apify": "mcp"})
         assert metrics == {
             "agent_turns": 3,
             "tool_calls_total": 3,
@@ -131,7 +131,7 @@ class TestComputeTrialMetrics:
 
     def test_call_values(self):
         from mcp_evals.metrics import call_values
-        _, per_call = compute_trial_metrics(self._trajectory(), "mcp", "apify")
+        _, per_call = compute_trial_metrics(self._trajectory(), {"apify": "mcp"})
         values = call_values(per_call)
         assert values["escape_call_values"] == ["bash: curl https://api.apify.com/v2/acts/x"]
         assert values["errored_call_values"] == [
@@ -146,12 +146,12 @@ class TestComputeTrialMetrics:
                                  "arguments": {}}]},
             ]
         }
-        metrics, _ = compute_trial_metrics(traj, "mcp", "apify")
+        metrics, _ = compute_trial_metrics(traj, {"apify": "mcp"})
         assert metrics["prompt_baseline_tokens"] is None
         assert metrics["channel_calls"] == 1
 
     def test_empty_trajectory(self):
-        metrics, per_call = compute_trial_metrics({}, "mcp", "apify")
+        metrics, per_call = compute_trial_metrics({}, {"apify": "mcp"})
         assert metrics["tool_calls_total"] == 0
         assert per_call == []
 
@@ -179,7 +179,7 @@ class TestRewardDetails:
         assert failed_criteria(self.DETAILS) == ["actor_id_matches"]
 
 
-def test_target_for_task():
-    assert target_for_task("apify-fetch-actor-id") == "apify"
-    assert target_for_task("github-pr-info") == "github"
-    assert target_for_task("e2b-smoke") is None
+def test_connector_for_task():
+    assert connector_for_task("apify-fetch-actor-id") == "apify"
+    assert connector_for_task("github-pr-info") == "github"
+    assert connector_for_task("e2b-smoke") is None

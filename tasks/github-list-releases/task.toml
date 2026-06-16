@@ -10,6 +10,9 @@ category = "single_step"
 tags = ["read-only", "single-step"]
 axi_task = "list_releases"
 
+[mcp_evals]
+connectors = ["github"]
+
 [verifier]
 timeout_sec = 300.0
 

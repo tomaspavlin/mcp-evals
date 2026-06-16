@@ -1,0 +1,2 @@
+environment_env:
+  GITHUB_TOKEN: ${GITHUB_TOKEN}

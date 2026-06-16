@@ -9,6 +9,9 @@ difficulty = "hard"
 category = "competitive-intel"
 tags = ["read-only", "filter", "sort", "judge"]
 
+[mcp_evals]
+connectors = ["apify"]
+
 [verifier]
 timeout_sec = 300.0
 

@@ -16,13 +16,14 @@ Harness naming differences this module absorbs:
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
-# Per-target matcher registry. Hardcoded here rather than declared in
-# integrations/<name>/ for now. `mcp_tools` is the allowlist of normalized tool
-# names needed for prefix-stripping harnesses (codex); extend it when
-# surfacing new tools in the eval.
-TARGETS: dict[str, dict[str, Any]] = {
+# Per-connector matcher registry. Hardcoded here rather than declared in
+# connectors/<name>/<channel>/ for now. `mcp_tools` is the allowlist of
+# normalized tool names needed for prefix-stripping harnesses (codex); extend
+# it when surfacing new tools in the eval.
+CONNECTORS: dict[str, dict[str, Any]] = {
     "apify": {
         "mcp_name_prefixes": ("apify_", "apify-", "mcp__apify__"),
         "mcp_tools": {
@@ -62,26 +63,41 @@ WORKSPACE_TOOLS = {
 _ERROR_HEAD_PREFIXES = ("error", "traceback (most recent call last)")
 _ERROR_SUBSTRINGS = ("command not found", "permission denied")
 
-def parse_integration(name: str | None) -> tuple[str | None, str | None]:
-    """Split an integration name into (target, access_mode).
 
-    'apify-mcp' -> ('apify', 'mcp'); 'github-cli' -> ('github', 'cli').
-    Returns (None, None) for missing or malformed names.
+def parse_run_axes(verifier_env: dict[str, str] | None) -> dict[str, str]:
+    """Read the per-connector channel map a job wrote to verifier env.
+
+    Prefers MCP_EVALS_CHANNELS_JSON (multi-connector); falls back to
+    MCP_EVALS_CHANNEL + MCP_EVALS_CONNECTORS when present. Returns {} when
+    neither is set (e.g. old jobs predating these fields).
     """
-    if not name or "-" not in name:
-        return None, None
-    target, mode = name.split("-", 1)
-    return target, mode
+    env = verifier_env or {}
+    raw = env.get("MCP_EVALS_CHANNELS_JSON")
+    if raw:
+        try:
+            data = json.loads(raw)
+            if isinstance(data, dict):
+                return {str(k): str(v) for k, v in data.items()}
+        except json.JSONDecodeError:
+            pass
+    channel = env.get("MCP_EVALS_CHANNEL")
+    connectors = (env.get("MCP_EVALS_CONNECTORS") or "").split(",")
+    connectors = [c.strip() for c in connectors if c.strip()]
+    if channel and connectors:
+        return {c: channel for c in connectors}
+    return {}
 
 
-# Fallback for jobs that predate MCP_EVALS_INTEGRATION in verifier env: infer
-# the target from the task-name prefix. Prefer reading the integration from
-# trial config (verifier env) and calling parse_integration() instead.
-def target_for_task(task_name: str) -> str | None:
-    """Derive the eval target from the task-name prefix (apify-*, github-*)."""
-    for target in TARGETS:
-        if (task_name or "").startswith(target):
-            return target
+def connector_for_task(task_name: str) -> str | None:
+    """Derive the primary connector from the task-name prefix (apify-*, github-*).
+
+    Multi-connector tasks should set `[mcp_evals].connectors` in task.toml
+    instead of relying on this heuristic - this is a fallback used by the
+    dashboard for legacy jobs that didn't write verifier env axes.
+    """
+    for connector in CONNECTORS:
+        if (task_name or "").startswith(connector):
+            return connector
     return None
 
 
@@ -94,24 +110,28 @@ def _command(tc: dict) -> str:
     return ((args.get("command") or args.get("cmd")) or "").lstrip()
 
 
-def _normalize_mcp_tool(name: str, target: str) -> str:
-    for prefix in TARGETS[target]["mcp_name_prefixes"]:
+def _normalize_mcp_tool(name: str, connector: str) -> str:
+    for prefix in CONNECTORS[connector]["mcp_name_prefixes"]:
         if name.startswith(prefix):
             name = name[len(prefix):]
             break
     return name.replace("_", "-")
 
 
-def matches_channel(tc: dict, target: str, channel: str) -> bool:
-    """True if the tool call interacts with `target` through `channel`."""
-    if target not in TARGETS:
+def matches_channel(tc: dict, connector: str, channel: str) -> bool:
+    """True if the tool call interacts with `connector` through `channel`."""
+    if connector not in CONNECTORS:
         return False
-    spec = TARGETS[target]
+    # The `skill` channel is conceptually "CLI usage + extra prompt", so a
+    # skill cell's calls land on the shell. Match like cli.
+    if channel == "skill":
+        channel = "cli"
+    spec = CONNECTORS[connector]
     name = _name(tc)
     if channel == "mcp":
         if name.startswith(tuple(p.lower() for p in spec["mcp_name_prefixes"])):
             return True
-        return _normalize_mcp_tool(name, target) in spec["mcp_tools"]
+        return _normalize_mcp_tool(name, connector) in spec["mcp_tools"]
     if name not in SHELL_TOOLS:
         return False
     cmd = _command(tc)
@@ -122,33 +142,53 @@ def matches_channel(tc: dict, target: str, channel: str) -> bool:
     return False
 
 
-def _is_api_escape(tc: dict, target: str) -> bool:
-    """Shell call hitting the target's HTTP API directly (curl etc.)."""
+def _is_api_escape(tc: dict, connector: str) -> bool:
+    """Shell call hitting the connector's HTTP API directly (curl etc.)."""
     if _name(tc) not in SHELL_TOOLS:
         return False
     cmd = _command(tc)
-    return any(host in cmd for host in TARGETS[target]["api_hosts"])
+    return any(host in cmd for host in CONNECTORS[connector]["api_hosts"])
 
 
-def classify_call(tc: dict, target: str | None, channel: str | None) -> str:
+def classify_call(tc: dict, connector: str | None, channel: str | None) -> str:
     """Classify one tool call: channel | escape | workspace | other.
 
-    channel   - interaction with the target via the expected channel
-    escape    - interaction with the target via any other surface
-                (wrong channel, or raw HTTP to the target API)
+    channel   - interaction with the connector via the expected channel
+    escape    - interaction with the connector via any other surface
+                (wrong channel, or raw HTTP to the connector API)
     workspace - file/editor/bookkeeping tools
     other     - everything else (generic shell, unrelated tools)
 
-    With no expected channel there is nothing to escape from, so target
+    With no expected channel there is nothing to escape from, so connector
     interactions fall through to workspace/other.
     """
-    if target in TARGETS and channel:
-        if matches_channel(tc, target, channel):
+    if connector in CONNECTORS and channel:
+        if matches_channel(tc, connector, channel):
             return "channel"
         for ch in CHANNELS:
-            if ch != channel and matches_channel(tc, target, ch):
+            if ch != channel and matches_channel(tc, connector, ch):
                 return "escape"
-        if _is_api_escape(tc, target):
+        if _is_api_escape(tc, connector):
+            return "escape"
+    if _name(tc) in WORKSPACE_TOOLS:
+        return "workspace"
+    return "other"
+
+
+def classify_call_multi(tc: dict, channels_by_connector: dict[str, str]) -> str:
+    """Multi-connector classify: a call is `channel` if it matches the expected
+    channel for any wired connector; `escape` if it touches any wired connector
+    via another surface; otherwise `workspace`/`other`."""
+    if not channels_by_connector:
+        return classify_call(tc, None, None)
+    for connector, channel in channels_by_connector.items():
+        if matches_channel(tc, connector, channel):
+            return "channel"
+    for connector, channel in channels_by_connector.items():
+        for ch in CHANNELS:
+            if ch != channel and matches_channel(tc, connector, ch):
+                return "escape"
+        if _is_api_escape(tc, connector):
             return "escape"
     if _name(tc) in WORKSPACE_TOOLS:
         return "workspace"
@@ -181,24 +221,34 @@ def call_errored(output: str) -> bool:
 
 
 def compute_trial_metrics(
-    trajectory: dict, channel: str | None, target: str | None
+    trajectory: dict,
+    channels_by_connector: dict[str, str] | None = None,
+    *,
+    channel: str | None = None,
+    connector: str | None = None,
 ) -> tuple[dict, list[dict]]:
     """Compute per-trial metrics from an ATIF trajectory.
 
-    Returns (metrics, per_call_rows). `channel` is the verifier's
-    EXPECTED_CHANNEL (mcp | cli | mcpc), `target` e.g. "apify".
+    Pass `channels_by_connector` (e.g. {"apify": "mcp", "github": "mcp"}) for
+    multi-connector runs. The single-connector shorthand `channel=` + `connector=`
+    is kept for callers that haven't migrated yet.
 
     Metrics:
       agent_turns            - steps with source == "agent"
       tool_calls_total       - all tool calls of any kind
-      channel_calls          - calls matching the expected channel
-      off_channel_calls      - escapes: target reached via another surface
+      channel_calls          - calls matching an expected (connector, channel) pair
+      off_channel_calls      - escapes: a wired connector reached via another surface
       errored_calls          - calls whose observation looks like an error (heuristic)
       channel_output_chars   - total observation content size of channel calls
       prompt_baseline_tokens - prompt_tokens of the first agent step with metrics
-                               (context overhead: system prompt + tool schemas;
-                               None for harnesses without per-step metrics, e.g. codex)
+                               (None for harnesses without per-step metrics, e.g. codex)
     """
+    if channels_by_connector is None:
+        if connector and channel:
+            channels_by_connector = {connector: channel}
+        else:
+            channels_by_connector = {}
+
     steps = trajectory.get("steps", []) if trajectory else []
     per_call: list[dict] = []
     agent_turns = 0
@@ -220,7 +270,7 @@ def compute_trial_metrics(
                 "step_id": step.get("step_id"),
                 "name": tc.get("function_name") or "?",
                 "arguments": tc.get("arguments") or {},
-                "kind": classify_call(tc, target, channel),
+                "kind": classify_call_multi(tc, channels_by_connector),
                 "errored": call_errored(output) if output else False,
                 "output_chars": len(output),
                 "output_head": output[:160],

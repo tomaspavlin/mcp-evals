@@ -42,6 +42,6 @@ jobs/
 *.local.md
 .mcp.json
 
-# Materialized task environment dirs (populated from integrations/<name>/environment/
-# by `mcp-evals materialize` or the run pre-step).
+# Materialized task environment dirs (populated from images/base/ by
+# `mcp-evals materialize` or the run pre-step).
 tasks/*/environment/

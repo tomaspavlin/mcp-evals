@@ -1,7 +1,0 @@
-name: github-cli
-mcp_servers: []
-skills: []
-environment_env:
-  GITHUB_TOKEN: ${GITHUB_TOKEN}
-verifier_env:
-  EXPECTED_CHANNEL: cli

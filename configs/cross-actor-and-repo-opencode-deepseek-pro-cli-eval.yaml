@@ -1,0 +1,8 @@
+job_name: cross-actor-and-repo-opencode-deepseek-pro-cli-eval
+channel: cli
+n_concurrent_trials: 1
+tasks:
+  - path: tasks/cross-actor-and-repo
+agents:
+  - name: opencode
+    model_name: openrouter/deepseek/deepseek-v4-pro@preset/deepseek-provider-only
