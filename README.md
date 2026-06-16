@@ -24,6 +24,20 @@ How it works:
    agent (e.g. Claude Code) at them to diagnose failures and iterate on your
    skills and connectors.
 
+## Concepts
+
+Harbor primitives (Task, Trial, Job, Agent, Environment, Dataset) are documented
+at https://www.harborframework.com/docs/core-concepts. `mcp-evals` adds two
+project-specific axes on top:
+
+- **connector** - third-party service the agent talks to (`apify`, `github`, `linear`, `notion`, ...).
+- **channel** - how the agent reaches it: `mcp`, `cli`, `mcpc`, or `skill`. One channel per run by default; `connector_channels:` for hybrid.
+- **cell** - one (connector, channel) pair on disk: `connectors/<connector>/<channel>/{cell.yaml, instruction.md, [setup.sh], [teardown.sh], [skills/]}`.
+
+Deep reference (cell file layout, `cell.yaml` fields, MCP-proxy wrapper template,
+verifier env contract, step-by-step for wiring a new connector):
+[`docs/mcp-task-pattern.md`](docs/mcp-task-pattern.md).
+
 ## Installation
 
 ```bash
