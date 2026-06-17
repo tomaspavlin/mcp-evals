@@ -53,7 +53,7 @@ Bug 1: provider routing. Codex CLI 0.139 uses OpenAI's Responses API over WebSoc
 
 Bug 2: token forwarding. The existing `src/mcp_evals/_patches/codex_mcp_env.py` allowlist only had `apify`. When codex spawned `github-mcp-proxy` for the github integration, no `GITHUB_TOKEN` was forwarded; the proxy's `${GITHUB_TOKEN:?...}` guard killed it immediately, codex saw zero tools, model gave commentary only. Fix: added `"github": ["GITHUB_TOKEN"]` to `MCP_SERVER_ENV`.
 
-Bug 3: verifier channel matching. Codex emits MCP tool calls as their bare tool name (`pull_request_read`), no `github_` prefix. The github task `check.py` files only matched `("github_", "github-", "mcp__github__")` prefixes, so codex's tool calls were counted as non-MCP. claude-code and opencode preserve a prefix and passed; codex didn't. Fix: ported the apify-task pattern - `GITHUB_MCP_TOOLS` allowlist + `_normalize_mcp_tool` helper - to `tasks/github-pr-info/tests/check.py` and to all 16 other `tasks/github-*/tests/check.py` files (batch-applied via `/tmp/claude/apply_gh_mcp_allowlist.py`).
+Bug 3: verifier connector matching. Codex emits MCP tool calls as their bare tool name (`pull_request_read`), no `github_` prefix. The github task `check.py` files only matched `("github_", "github-", "mcp__github__")` prefixes, so codex's tool calls were counted as non-MCP. claude-code and opencode preserve a prefix and passed; codex didn't. Fix: ported the apify-task pattern - `GITHUB_MCP_TOOLS` allowlist + `_normalize_mcp_tool` helper - to `tasks/github-pr-info/tests/check.py` and to all 16 other `tasks/github-*/tests/check.py` files (batch-applied via `/tmp/claude/apply_gh_mcp_allowlist.py`).
 
 - [x] `codex + gpt-5.4-mini` x `apify-mcp` (1.000)
 - [x] `codex + gpt-5.4` x `apify-mcp` (1.000)
@@ -75,7 +75,7 @@ Stopgap (this run): re-run the apify integration configs **serially**, one at a 
 
 ### Group C: apify-skill partial on haiku (1 cell, reward 0.667) - NOT A BUG, real result
 
-Root cause: haiku ignored the skill and used `WebFetch` against `https://api.apify.com/v2/acts/apify~web-scraper` directly, then `Write` to `/app/actor_id.txt`. Two tool calls, zero `apify` CLI invocations. `actor_id_file_exists` and `actor_id_matches` passed; `used_expected_channel (cli)` failed.
+Root cause: haiku ignored the skill and used `WebFetch` against `https://api.apify.com/v2/acts/apify~web-scraper` directly, then `Write` to `/app/actor_id.txt`. Two tool calls, zero `apify` CLI invocations. `actor_id_file_exists` and `actor_id_matches` passed; `used_expected_connector (cli)` failed.
 
 Every other agent on this integration loaded the skill and went through the CLI. Haiku didn't. The integration's `instruction.md` says the skill is "available", not required, and haiku took the shortcut. This is the eval working as intended - it's measuring whether the skill drives CLI usage, and haiku's score reflects that it doesn't reliably here. No fix.
 
@@ -84,12 +84,12 @@ Every other agent on this integration loaded the skill and went through the CLI.
 ### Group D: claude sonnet partial on MCP (2 cells) - NOT A BUG, real result
 
 Root cause: sonnet delegates the work to claude-code's built-in `Agent` (subagent) tool, and **claude-code subagents are spawned without the parent's MCP servers**. The subagent therefore has no MCP available and falls back to shell:
-- `apify-mcp` x sonnet (`apify-fetch-actor-id__C4cL9E3`): parent runs `Agent` → subagent tries `apify` CLI (not installed) → falls back to `WebFetch https://api.apify.com/v2/acts/apify~web-scraper` → parent writes file. `actor_id_*` pass, `used_expected_channel(mcp)` fails → 0.667.
-- `github-mcp` x sonnet (`github-pr-info__3Am3r5E`): parent `Agent` → two nested `Agent` calls → leaf subagent runs `Bash: gh pr view 50782 ...` (gh ships in the github task env). Sonnet's prompts to the subagents literally said "Do NOT use gh CLI - use only GitHub MCP tools" but the subagent had no MCP to use. Programmatic `used_expected_channel(mcp)=0`; judge gave a false PASS reasoning "successfully executed a GitHub MCP tool call" (contradicted by the trajectory) → 0.500.
+- `apify-mcp` x sonnet (`apify-fetch-actor-id__C4cL9E3`): parent runs `Agent` → subagent tries `apify` CLI (not installed) → falls back to `WebFetch https://api.apify.com/v2/acts/apify~web-scraper` → parent writes file. `actor_id_*` pass, `used_expected_connector(mcp)` fails → 0.667.
+- `github-mcp` x sonnet (`github-pr-info__3Am3r5E`): parent `Agent` → two nested `Agent` calls → leaf subagent runs `Bash: gh pr view 50782 ...` (gh ships in the github task env). Sonnet's prompts to the subagents literally said "Do NOT use gh CLI - use only GitHub MCP tools" but the subagent had no MCP to use. Programmatic `used_expected_connector(mcp)=0`; judge gave a false PASS reasoning "successfully executed a GitHub MCP tool call" (contradicted by the trajectory) → 0.500.
 
 Zero MCP calls in either trial. Verifier is correct. This is sonnet's delegation habit interacting with claude-code's subagent-MCP-isolation - a real behavioral pattern worth keeping in the data.
 
-Visibility caveat: subagent transcripts live at `<trial>/agent/sessions/projects/-app/<sid>/subagents/agent-*.jsonl`. Neither `harbor view jobs` nor `apps/dashboard/` surfaces them; the claude-code adapter (`harbor/agents/installed/claude_code.py:182`) excludes subagent paths when building ATIF, so the parent `trajectory.json` shows only the opaque `Agent` tool call. See `docs/todo.md` § "Subagent trajectories invisible to viewer + verifier".
+Visibility caveat: subagent transcripts live at `<trial>/agent/sessions/projects/-app/<sid>/subagents/agent-*.jsonl`. Neither `harbor view jobs` nor `dashboard/` surfaces them; the claude-code adapter (`harbor/agents/installed/claude_code.py:182`) excludes subagent paths when building ATIF, so the parent `trajectory.json` shows only the opaque `Agent` tool call. See `docs/todo.md` § "Subagent trajectories invisible to viewer + verifier".
 
 - [x] `claude-code + sonnet-4.6` x `apify-mcp` (0.667 reward) - real result, kept as-is
 - [x] `claude-code + sonnet-4.6` x `github-mcp` (0.500 reward) - real result, kept as-is

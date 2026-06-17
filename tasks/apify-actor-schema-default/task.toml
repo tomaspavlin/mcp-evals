@@ -10,7 +10,7 @@ category = "schema-literacy"
 tags = ["read-only", "single-call"]
 
 [mcp_evals]
-connectors = ["apify"]
+apps = ["apify"]
 
 [verifier]
 timeout_sec = 60.0

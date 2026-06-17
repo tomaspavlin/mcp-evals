@@ -10,7 +10,7 @@ category = "actor-run"
 tags = ["read-only", "single-actor", "dataset-parse"]
 
 [mcp_evals]
-connectors = ["apify"]
+apps = ["apify"]
 
 [verifier]
 timeout_sec = 60.0

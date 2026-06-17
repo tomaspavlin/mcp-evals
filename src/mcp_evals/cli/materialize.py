@@ -6,7 +6,7 @@ from rich.console import Console
 from typer import Option
 
 from mcp_evals.config import load_run_config
-from mcp_evals.connectors.materialize import (
+from mcp_evals.apps.materialize import (
     discover_dataset_task_paths,
     materialize_for_tasks,
 )

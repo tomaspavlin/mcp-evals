@@ -9,16 +9,16 @@ EXPECTED_ACTOR_USERNAME = "apify"
 EXPECTED_REPO_LANGUAGE = "Python"
 TRAJECTORY_PATH = "/logs/agent/trajectory.json"
 
-_channels = json.loads(os.environ.get("MCP_EVALS_CHANNELS_JSON") or "{}")
-_default_channel = os.environ.get("MCP_EVALS_CHANNEL") or None
+_connectors = json.loads(os.environ.get("MCP_EVALS_CONNECTORS_JSON") or "{}")
+_default_connector = os.environ.get("MCP_EVALS_CONNECTOR") or None
 
 
-def _resolve(connector: str) -> str | None:
-    ch = _channels.get(connector) or _default_channel
+def _resolve(app: str) -> str | None:
+    ch = _connectors.get(app) or _default_connector
     return "cli" if ch == "skill" else ch
 
 
-CHANNELS = {"apify": _resolve("apify"), "github": _resolve("github")}
+CONNECTORS = {"apify": _resolve("apify"), "github": _resolve("github")}
 
 
 def _tool_calls() -> list[dict]:
@@ -26,7 +26,7 @@ def _tool_calls() -> list[dict]:
     return collect_tool_calls(data) if data else []
 
 
-CONNECTORS = {
+APPS = {
     "apify": {
         "mcp_name_prefixes": ("apify_", "apify-", "mcp__apify__"),
         "mcp_tools": {
@@ -58,41 +58,41 @@ CONNECTORS = {
 SHELL_TOOLS = {"bash", "exec_command", "shell", "run_terminal_cmd", "local_shell"}
 
 
-def _normalize_mcp_tool(name: str, connector: str) -> str:
-    for prefix in CONNECTORS[connector]["mcp_name_prefixes"]:
+def _normalize_mcp_tool(name: str, app: str) -> str:
+    for prefix in APPS[app]["mcp_name_prefixes"]:
         if name.startswith(prefix):
             name = name[len(prefix):]
             break
     return name.replace("_", "-")
 
 
-def _matches(tc: dict, connector: str, channel: str | None) -> bool:
-    if not channel:
+def _matches(tc: dict, app: str, connector: str | None) -> bool:
+    if not connector:
         return True
-    spec = CONNECTORS[connector]
+    spec = APPS[app]
     name = (tc.get("function_name") or "").lower()
     args = tc.get("arguments") or {}
     cmd = ((args.get("command") or args.get("cmd")) or "").lstrip()
-    if channel == "mcp":
-        return name.startswith(spec["mcp_name_prefixes"]) or _normalize_mcp_tool(name, connector) in spec["mcp_tools"]
-    if channel == "cli":
+    if connector == "mcp":
+        return name.startswith(spec["mcp_name_prefixes"]) or _normalize_mcp_tool(name, app) in spec["mcp_tools"]
+    if connector == "cli":
         return name in SHELL_TOOLS and cmd.startswith(spec["cli_prefix"])
-    if channel == "mcpc":
+    if connector == "mcpc":
         return name in SHELL_TOOLS and cmd.startswith("mcpc ")
     return False
 
 
 def _log_summary() -> None:
     calls = _tool_calls()
-    print(f"[verifier] channels={CHANNELS!r} tool_calls={len(calls)}")
+    print(f"[verifier] connectors={CONNECTORS!r} tool_calls={len(calls)}")
     for i, tc in enumerate(calls):
         name = tc.get("function_name", "")
         args = tc.get("arguments") or {}
         cmd = args.get("command") or args.get("cmd")
         snippet = cmd if cmd else str(args)
         marks = "".join(
-            connector[0].upper() if _matches(tc, connector, ch) else " "
-            for connector, ch in CHANNELS.items()
+            app[0].upper() if _matches(tc, app, ch) else " "
+            for app, ch in CONNECTORS.items()
         )
         print(f"[verifier] [{marks}] {i:3d} {name}  {str(snippet)[:140]}")
 
@@ -100,18 +100,18 @@ def _log_summary() -> None:
 _log_summary()
 
 
-@criterion(description=f"agent used apify via {CHANNELS['apify'] or 'n/a'}")
-def used_apify_channel(workspace: Path) -> bool:
-    if not CHANNELS["apify"]:
+@criterion(description=f"agent used apify via {CONNECTORS['apify'] or 'n/a'}")
+def used_apify_connector(workspace: Path) -> bool:
+    if not CONNECTORS["apify"]:
         return True
-    return any(_matches(tc, "apify", CHANNELS["apify"]) for tc in _tool_calls())
+    return any(_matches(tc, "apify", CONNECTORS["apify"]) for tc in _tool_calls())
 
 
-@criterion(description=f"agent used github via {CHANNELS['github'] or 'n/a'}")
-def used_github_channel(workspace: Path) -> bool:
-    if not CHANNELS["github"]:
+@criterion(description=f"agent used github via {CONNECTORS['github'] or 'n/a'}")
+def used_github_connector(workspace: Path) -> bool:
+    if not CONNECTORS["github"]:
         return True
-    return any(_matches(tc, "github", CHANNELS["github"]) for tc in _tool_calls())
+    return any(_matches(tc, "github", CONNECTORS["github"]) for tc in _tool_calls())
 
 
 @criterion

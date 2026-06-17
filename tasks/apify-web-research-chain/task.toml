@@ -10,7 +10,7 @@ category = "multi-step-chaining"
 tags = ["read-only", "two-actor"]
 
 [mcp_evals]
-connectors = ["apify"]
+apps = ["apify"]
 
 [verifier]
 timeout_sec = 300.0

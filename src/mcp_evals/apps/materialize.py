@@ -8,7 +8,7 @@ def materialize_environment(task_path: Path, base_image_dir: Path = BASE_IMAGE_D
     """Replace `task_path/environment/` with a fresh copy of `base_image_dir`.
 
     Every task uses the same base image (all CLIs and MCP proxies pre-installed);
-    channel selection happens at runtime via mcp_servers / instruction append /
+    connector selection happens at runtime via mcp_servers / instruction append /
     setup script, not at image build time. Copying the same dir into every
     task means dirhash() is stable across runs and the sandbox template cache
     stays hot.
@@ -27,7 +27,7 @@ def materialize_environment(task_path: Path, base_image_dir: Path = BASE_IMAGE_D
             f"Expected a directory at {target}, found a file"
         )
     # Fast-path: skip rmtree+copytree when target already matches base byte-for-byte.
-    # Eliminates the rmtree/copytree race under parallel channel sweeps that all
+    # Eliminates the rmtree/copytree race under parallel connector sweeps that all
     # materialize the same task dir (every run produces identical content anyway).
     if target.is_dir():
         from dirhash import dirhash

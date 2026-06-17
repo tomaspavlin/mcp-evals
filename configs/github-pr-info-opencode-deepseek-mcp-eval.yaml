@@ -1,5 +1,5 @@
 job_name: github-pr-info-opencode-deepseek-mcp-eval
-channel: mcp
+connector: mcp
 tasks:
   - path: tasks/github-pr-info
 agents:

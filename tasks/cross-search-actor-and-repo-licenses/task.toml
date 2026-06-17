@@ -6,11 +6,11 @@ description = "Search Apify Store, fetch two GitHub repos, compare topic counts,
 
 [metadata]
 difficulty = "hard"
-category = "cross-connector"
+category = "cross-app"
 tags = ["read-only", "apify", "github", "multi-step", "search"]
 
 [mcp_evals]
-connectors = ["apify", "github"]
+apps = ["apify", "github"]
 
 [verifier]
 timeout_sec = 60.0

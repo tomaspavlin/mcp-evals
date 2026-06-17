@@ -10,7 +10,7 @@ category = "rag-ingestion"
 tags = ["read-only", "single-actor", "dataset-parse", "schema-literacy", "judge"]
 
 [mcp_evals]
-connectors = ["apify"]
+apps = ["apify"]
 
 [verifier]
 timeout_sec = 300.0

@@ -1,5 +1,5 @@
 job_name: apify-fetch-actor-id-opencode-deepseek-mcp-eval
-channel: mcp
+connector: mcp
 n_concurrent_trials: 1
 tasks:
   - path: tasks/apify-fetch-actor-id

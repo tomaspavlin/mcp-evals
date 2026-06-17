@@ -6,11 +6,11 @@ description = "Extract multiple metadata fields from one Apify Actor and one Git
 
 [metadata]
 difficulty = "medium"
-category = "cross-connector"
+category = "cross-app"
 tags = ["read-only", "apify", "github", "multi-field"]
 
 [mcp_evals]
-connectors = ["apify", "github"]
+apps = ["apify", "github"]
 
 [verifier]
 timeout_sec = 60.0

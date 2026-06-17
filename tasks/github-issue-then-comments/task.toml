@@ -11,7 +11,7 @@ tags = ["read-only", "multi-step"]
 axi_task = "issue_then_comments"
 
 [mcp_evals]
-connectors = ["github"]
+apps = ["github"]
 
 [verifier]
 timeout_sec = 420.0

@@ -10,8 +10,8 @@ from typer import Argument, Option
 console = Console()
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-APP_PATH = REPO_ROOT / "apps" / "dashboard" / "app.py"
-VENV_STREAMLIT = REPO_ROOT / "apps" / "dashboard" / ".venv" / "bin" / "streamlit"
+APP_PATH = REPO_ROOT / "dashboard" / "app.py"
+VENV_STREAMLIT = REPO_ROOT / "dashboard" / ".venv" / "bin" / "streamlit"
 
 
 def dashboard_command(
@@ -47,7 +47,7 @@ def dashboard_command(
         console.print(f"[red]Dashboard app not found: {APP_PATH}[/red]")
         raise typer.Exit(code=1)
 
-    # Prefer the dashboard's dedicated venv (see apps/dashboard/README.md),
+    # Prefer the dashboard's dedicated venv (see dashboard/README.md),
     # fall back to whatever streamlit is on PATH.
     streamlit = (
         str(VENV_STREAMLIT) if VENV_STREAMLIT.exists() else shutil.which("streamlit")
@@ -55,7 +55,7 @@ def dashboard_command(
     if streamlit is None:
         console.print(
             "[red]streamlit not found.[/red] "
-            "Set up the dashboard venv per apps/dashboard/README.md"
+            "Set up the dashboard venv per dashboard/README.md"
         )
         raise typer.Exit(code=1)
 
@@ -77,6 +77,6 @@ def dashboard_command(
     except OSError as e:
         console.print(
             f"[red]Failed to launch {streamlit}: {e}[/red]\n"
-            "The dashboard venv may be broken; recreate it per apps/dashboard/README.md"
+            "The dashboard venv may be broken; recreate it per dashboard/README.md"
         )
         raise typer.Exit(code=1)

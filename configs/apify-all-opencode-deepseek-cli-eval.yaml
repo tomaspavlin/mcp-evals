@@ -1,5 +1,5 @@
 job_name: apify-all-opencode-deepseek-cli-eval
-channel: cli
+connector: cli
 n_concurrent_trials: 2
 datasets:
   - path: tasks

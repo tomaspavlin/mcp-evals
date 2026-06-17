@@ -12,7 +12,7 @@ from harbor.utils.env import resolve_env_vars
 from mcp_evals._patches.integration_setup_script import set_setup_script
 from mcp_evals._patches.integration_teardown_script import set_teardown_script
 from mcp_evals.config import RunConfig
-from mcp_evals.connectors.model import ConnectorCell
+from mcp_evals.apps.model import AppCell
 from mcp_evals.defaults import (
     DEFAULT_AGENT_KWARGS,
     DEFAULT_ENVIRONMENT,
@@ -20,7 +20,7 @@ from mcp_evals.defaults import (
 )
 
 
-def _merge_env(cells: list[ConnectorCell], attr: str) -> dict[str, str]:
+def _merge_env(cells: list[AppCell], attr: str) -> dict[str, str]:
     """Merge per-cell env dicts. Conflicts on the same key are an error -
     surfacing the misconfiguration is better than picking a winner silently."""
     merged: dict[str, str] = {}
@@ -29,7 +29,7 @@ def _merge_env(cells: list[ConnectorCell], attr: str) -> dict[str, str]:
             if k in merged and merged[k] != v:
                 raise ValueError(
                     f"Conflicting {attr}[{k}]: "
-                    f"{merged[k]!r} vs {v!r} (from {cell.connector}/{cell.channel})"
+                    f"{merged[k]!r} vs {v!r} (from {cell.app}/{cell.connector})"
                 )
             merged[k] = v
     return merged
@@ -59,13 +59,13 @@ def _concat_scripts(paths: list[Path]) -> str | None:
     return "\n".join(parts) + "\n"
 
 
-def build_job_config(run: RunConfig, cells: list[ConnectorCell]) -> JobConfig:
-    """Expand RunConfig + per-connector cells + defaults.py into a harbor JobConfig.
+def build_job_config(run: RunConfig, cells: list[AppCell]) -> JobConfig:
+    """Expand RunConfig + per-app cells + defaults.py into a harbor JobConfig.
 
     Cells are concatenated: mcp_servers/skills/instruction_paths join, env
     dicts merge (conflicts error). Setup and teardown scripts concat into one
-    sequenced script. Verifier sees the per-connector channel map via
-    MCP_EVALS_CHANNELS_JSON.
+    sequenced script. Verifier sees the per-app connector map via
+    MCP_EVALS_CONNECTORS_JSON.
     """
     mcp_servers = [s for cell in cells for s in cell.mcp_servers]
     skills = [s for cell in cells for s in cell.skills]
@@ -89,16 +89,16 @@ def build_job_config(run: RunConfig, cells: list[ConnectorCell]) -> JobConfig:
     setup_env = resolve_env_vars(_merge_env(cells, "setup_env"))
     teardown_env = resolve_env_vars(_merge_env(cells, "teardown_env"))
 
-    channels_by_connector = {c.connector: c.channel for c in cells}
+    connectors_by_app = {c.app: c.connector for c in cells}
     verifier_env = {
-        "MCP_EVALS_CONNECTORS": ",".join(channels_by_connector),
-        "MCP_EVALS_CHANNELS_JSON": json.dumps(channels_by_connector, sort_keys=True),
-        # Convenience: set MCP_EVALS_CHANNEL only when one channel covers every
-        # connector (the common case). Hybrid runs leave it unset; verifiers
-        # should prefer MCP_EVALS_CHANNELS_JSON.
+        "MCP_EVALS_APPS": ",".join(connectors_by_app),
+        "MCP_EVALS_CONNECTORS_JSON": json.dumps(connectors_by_app, sort_keys=True),
+        # Convenience: set MCP_EVALS_CONNECTOR only when one connector covers every
+        # app (the common case). Hybrid runs leave it unset; verifiers
+        # should prefer MCP_EVALS_CONNECTORS_JSON.
         **(
-            {"MCP_EVALS_CHANNEL": next(iter(set(channels_by_connector.values())))}
-            if len(set(channels_by_connector.values())) == 1
+            {"MCP_EVALS_CONNECTOR": next(iter(set(connectors_by_app.values())))}
+            if len(set(connectors_by_app.values())) == 1
             else {}
         ),
     }

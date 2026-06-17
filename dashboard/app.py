@@ -12,12 +12,12 @@ import streamlit as st
 
 from harbor.viewer.scanner import JobScanner
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[1]
 # Set by `mcp-evals dashboard` so external projects can point at their own jobs dir.
 JOBS_DIR = Path(os.environ.get("MCP_EVALS_JOBS_DIR", REPO_ROOT / "jobs")).expanduser().resolve()
-# Fallback parse for jobs predating MCP_EVALS_CHANNEL in verifier env.
-KNOWN_CHANNELS = {"mcp", "cli", "skill", "mcpc"}
-GROUP_KEYS = ["trial", "job", "connectors", "channel", "connector", "task", "agent", "model"]
+# Fallback parse for jobs predating MCP_EVALS_CONNECTOR in verifier env.
+KNOWN_CONNECTORS = {"mcp", "cli", "skill", "mcpc"}
+GROUP_KEYS = ["trial", "job", "apps", "connector", "app", "task", "agent", "model"]
 
 # Shared trajectory-metric logic (stdlib-only). Loaded by file path because the
 # dashboard venv has streamlit+harbor but not the mcp_evals package, and
@@ -51,11 +51,11 @@ def read_json(path: Path) -> dict | None:
         return None
 
 
-def _fallback_channel(job_name: str) -> str:
-    # Used only when the trial's verifier env lacks MCP_EVALS_CHANNEL.
-    # Naming convention (AGENTS.md): <dataset>-<harness>-<model>-<channel>-<purpose>.
+def _fallback_connector(job_name: str) -> str:
+    # Used only when the trial's verifier env lacks MCP_EVALS_CONNECTOR.
+    # Naming convention (AGENTS.md): <dataset>-<harness>-<model>-<connector>-<purpose>.
     for tok in job_name.split("-"):
-        if tok in KNOWN_CHANNELS:
+        if tok in KNOWN_CONNECTORS:
             return tok
     return "?"
 
@@ -222,7 +222,7 @@ def _fmt_n(n: int | float | None) -> str:
     return f"{n / 1_000_000:.1f}M"
 
 
-_KIND_COLORS = {"channel": "#10b981", "escape": "#f59e0b"}
+_KIND_COLORS = {"connector": "#10b981", "escape": "#f59e0b"}
 
 
 @st.dialog("Step detail", width="large")
@@ -274,8 +274,8 @@ def _show_step_dialog(step: dict, kinds: list[str]) -> None:
 
 def _render_trajectory_steps(
     steps: list[dict],
+    app: str | None,
     connector: str | None,
-    channel: str | None,
     state_key: str,
 ) -> None:
     if not steps:
@@ -283,13 +283,13 @@ def _render_trajectory_steps(
         return
 
     # Classify each step's tool calls so the table and dialog agree on what
-    # counts as channel / escape. Same call as the Tool calls tab uses.
+    # counts as connector / escape. Same call as the Tool calls tab uses.
     step_kinds: list[list[str]] = []
     for s in steps:
         step_kinds.append([
             metrics_mod.classify_call(
                 {"function_name": tc.get("function_name") or "?", "arguments": tc.get("arguments") or {}},
-                connector, channel,
+                app, connector,
             )
             for tc in s["tool_calls"]
         ])
@@ -346,31 +346,31 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
             continue
         n_in, n_cache, n_out, cost = tr.compute_token_cost_totals()
         errored = tr.exception_info is not None
-        channels_by_connector: dict[str, str] = {}
+        connectors_by_app: dict[str, str] = {}
         if tr.config and tr.config.verifier:
-            channels_by_connector = metrics_mod.parse_run_axes(tr.config.verifier.env)
-        if not channels_by_connector:
-            # Old jobs (pre channel/connector split) only set EXPECTED_CHANNEL or
+            connectors_by_app = metrics_mod.parse_run_axes(tr.config.verifier.env)
+        if not connectors_by_app:
+            # Old jobs (pre connector/app split) only set EXPECTED_CONNECTOR or
             # encoded both axes in the job name. Best-effort recovery.
-            legacy_channel = None
+            legacy_connector = None
             if tr.config and tr.config.verifier:
-                legacy_channel = tr.config.verifier.env.get("EXPECTED_CHANNEL") or None
-            legacy_channel = legacy_channel or _fallback_channel(job_name)
-            fallback_connector = metrics_mod.connector_for_task(tr.task_name or "")
-            if fallback_connector and legacy_channel and legacy_channel != "?":
-                channels_by_connector = {fallback_connector: legacy_channel}
-        connector_keys = sorted(channels_by_connector)
-        connectors_str = ",".join(connector_keys) or "?"
-        channel_values = sorted(set(channels_by_connector.values()))
-        channel_str = channel_values[0] if len(channel_values) == 1 else (
-            "hybrid" if channel_values else "?"
+                legacy_connector = tr.config.verifier.env.get("EXPECTED_CONNECTOR") or None
+            legacy_connector = legacy_connector or _fallback_connector(job_name)
+            fallback_app = metrics_mod.app_for_task(tr.task_name or "")
+            if fallback_app and legacy_connector and legacy_connector != "?":
+                connectors_by_app = {fallback_app: legacy_connector}
+        app_keys = sorted(connectors_by_app)
+        apps_str = ",".join(app_keys) or "?"
+        connector_values = sorted(set(connectors_by_app.values()))
+        connector_str = connector_values[0] if len(connector_values) == 1 else (
+            "hybrid" if connector_values else "?"
         )
-        primary_connector = connector_keys[0] if len(connector_keys) == 1 else None
+        primary_app = app_keys[0] if len(app_keys) == 1 else None
         trial_dir = JOBS_DIR / job_name / trial_name
         details = read_json(trial_dir / "verifier" / "reward-details.json")
         passed = metrics_mod.tests_passed(details)
         traj = read_json(trial_dir / "agent" / "trajectory.json") or {}
-        trial_metrics, per_call = metrics_mod.compute_trial_metrics(traj, channels_by_connector)
+        trial_metrics, per_call = metrics_mod.compute_trial_metrics(traj, connectors_by_app)
         values = metrics_mod.call_values(per_call)
 
         def _secs(ti):
@@ -387,9 +387,9 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
         out.append({
             "job": job_name,
             "trial": trial_name,
-            "connectors": connectors_str,
-            "channel": channel_str,
-            "connector": primary_connector,
+            "apps": apps_str,
+            "connector": connector_str,
+            "app": primary_app,
             "task": tr.task_name,
             "agent": tr.agent_info.name if tr.agent_info else None,
             "model": model_name,
@@ -424,8 +424,8 @@ def aggregate(trials: list[dict], by: list[str]) -> list[dict]:
         "passed": 0, "errored": 0, "total": 0,
         "cost_usd": 0.0, "n_input": 0, "n_cache": 0, "n_output": 0,
         "t_env_setup": 0.0, "t_agent_setup": 0.0, "t_agent_exec": 0.0, "t_verifier": 0.0,
-        "agent_turns": 0, "channel_calls": 0, "off_channel_calls": 0,
-        "errored_calls": 0, "channel_output_chars": 0,
+        "agent_turns": 0, "connector_calls": 0, "off_connector_calls": 0,
+        "errored_calls": 0, "connector_output_chars": 0,
         "baseline_sum": 0, "baseline_n": 0,
         "reward_sum": 0.0, "reward_n": 0,
     })
@@ -446,10 +446,10 @@ def aggregate(trials: list[dict], by: list[str]) -> list[dict]:
         g["t_agent_exec"] += t["t_agent_exec"]
         g["t_verifier"] += t["t_verifier"]
         g["agent_turns"] += t["agent_turns"]
-        g["channel_calls"] += t["channel_calls"]
-        g["off_channel_calls"] += t["off_channel_calls"]
+        g["connector_calls"] += t["connector_calls"]
+        g["off_connector_calls"] += t["off_connector_calls"]
         g["errored_calls"] += t["errored_calls"]
-        g["channel_output_chars"] += t["channel_output_chars"]
+        g["connector_output_chars"] += t["connector_output_chars"]
         if t["prompt_baseline_tokens"]:
             g["baseline_sum"] += t["prompt_baseline_tokens"]
             g["baseline_n"] += 1
@@ -468,10 +468,10 @@ def aggregate(trials: list[dict], by: list[str]) -> list[dict]:
             # None when no trial had a numeric reward (verifier returned no rewards dict).
             "avg_reward": (g["reward_sum"] / g["reward_n"]) if g["reward_n"] else None,
             "avg_agent_turns": g["agent_turns"] / total,
-            "avg_channel_calls": g["channel_calls"] / total,
-            "avg_off_channel_calls": g["off_channel_calls"] / total,
+            "avg_connector_calls": g["connector_calls"] / total,
+            "avg_off_connector_calls": g["off_connector_calls"] / total,
             "avg_errored_calls": g["errored_calls"] / total,
-            "avg_channel_output_chars": g["channel_output_chars"] / total,
+            "avg_connector_output_chars": g["connector_output_chars"] / total,
             # ~tokens at 4 chars/token; codex trials lack per-step metrics (None baseline)
             "avg_prompt_baseline_tokens": (
                 g["baseline_sum"] / g["baseline_n"] if g["baseline_n"] else None
@@ -535,7 +535,7 @@ harbor_view_base = st.sidebar.text_input(
 ).rstrip("/")
 
 # Jobs is the first filter: it gates which trials get loaded; the dimension
-# filters below (channel / agent+model / task) then narrow what was loaded.
+# filters below (connector / agent+model / task) then narrow what was loaded.
 st.sidebar.markdown("**Filters**")
 st.sidebar.caption("Jobs")
 with st.sidebar.container(height=240):
@@ -568,16 +568,16 @@ def _agent_model(t: dict) -> str:
 
 _filters: list[tuple] = []
 
-# Channel and agent+model are small fixed sets, so pills (toggle chips) read
+# Connector and agent+model are small fixed sets, so pills (toggle chips) read
 # better than a dropdown. Task can be long and high-cardinality, so it stays a
 # multiselect and sits last.
-_chan_opts = sorted({t.get("channel") or "?" for t in trials})
+_chan_opts = sorted({t.get("connector") or "?" for t in trials})
 if len(_chan_opts) > 1:
     _chosen = st.sidebar.pills(
-        f"Channel ({len(_chan_opts)})", _chan_opts, selection_mode="multi",
-        default=_chan_opts, key="filt_channel",
+        f"Connector ({len(_chan_opts)})", _chan_opts, selection_mode="multi",
+        default=_chan_opts, key="filt_connector",
     )
-    _filters.append((lambda t: t.get("channel") or "?", set(_chosen)))
+    _filters.append((lambda t: t.get("connector") or "?", set(_chosen)))
 
 _am_opts = sorted({_agent_model(t) for t in trials})
 if len(_am_opts) > 1:
@@ -621,8 +621,8 @@ with tab_grouped:
         # cost_usd stays as the one total with natural sum semantics (job spend).
         SUMMARY_COLUMNS = [
             "group", "total", "passed", "errored", "pass_rate", "avg_reward",
-            "avg_agent_turns", "avg_channel_calls", "avg_off_channel_calls",
-            "avg_errored_calls", "avg_channel_output_chars", "avg_prompt_baseline_tokens",
+            "avg_agent_turns", "avg_connector_calls", "avg_off_connector_calls",
+            "avg_errored_calls", "avg_connector_output_chars", "avg_prompt_baseline_tokens",
             "avg_cost_usd", "avg_uncached_input_tokens", "avg_cache_tokens", "cache_hit_rate", "avg_output_tokens",
             "avg_env_setup_s", "avg_agent_setup_s", "avg_agent_exec_s", "avg_verifier_s",
             "cost_usd",
@@ -654,11 +654,11 @@ with tab_grouped:
             st.warning("No passed trials in the selection; efficiency charts are empty. "
                        "Untick 'passed trials only' to include failed trials.")
 
-        st.subheader(f"Channel activity (avg per trial){eff_note}")
+        st.subheader(f"Connector activity (avg per trial){eff_note}")
         activity_rows = []
         for r in eff_rows:
-            activity_rows.append({"group": r["group"], "metric": "channel calls", "value": r["avg_channel_calls"]})
-            activity_rows.append({"group": r["group"], "metric": "off-channel calls", "value": r["avg_off_channel_calls"]})
+            activity_rows.append({"group": r["group"], "metric": "connector calls", "value": r["avg_connector_calls"]})
+            activity_rows.append({"group": r["group"], "metric": "off-connector calls", "value": r["avg_off_connector_calls"]})
             activity_rows.append({"group": r["group"], "metric": "errored calls", "value": r["avg_errored_calls"]})
             activity_rows.append({"group": r["group"], "metric": "agent turns", "value": r["avg_agent_turns"]})
         if activity_rows:
@@ -666,16 +666,16 @@ with tab_grouped:
             fig_act.update_xaxes(title=" | ".join(group_by))
             st.plotly_chart(fig_act, use_container_width=True)
 
-        st.subheader(f"Channel output size (avg chars per trial){eff_note}")
-        # Verbosity of the target surface: total tool-result chars of on-channel
+        st.subheader(f"Connector output size (avg chars per trial){eff_note}")
+        # Verbosity of the target surface: total tool-result chars of on-connector
         # calls. ~tokens = chars / 4. Caveat: opencode truncates huge bash
         # outputs in the trajectory, so cli numbers can undercount (see README
         # known limitations).
         output_rows = [
             {
                 "group": r["group"],
-                "chars": r["avg_channel_output_chars"],
-                "est_tokens": int(r["avg_channel_output_chars"] / 4),
+                "chars": r["avg_connector_output_chars"],
+                "est_tokens": int(r["avg_connector_output_chars"] / 4),
             }
             for r in eff_rows
         ]
@@ -684,7 +684,7 @@ with tab_grouped:
             fig_out.update_xaxes(title=" | ".join(group_by))
             st.plotly_chart(fig_out, use_container_width=True)
 
-        # The calls behind the off-channel / errored counts, plus failed tests
+        # The calls behind the off-connector / errored counts, plus failed tests
         # and trial exceptions. All selected trials, not just eff_trials: a
         # failed trial's escapes are exactly what you want to inspect.
         flagged = []
@@ -771,8 +771,8 @@ def _trial_row(t: dict) -> dict:
         "trial": t["trial"],
         "job": t["job"],
         "task": t.get("task") or "?",
-        "connectors": t["connectors"],
-        "channel": t["channel"],
+        "apps": t["apps"],
+        "connector": t["connector"],
         "model": t["model"],
         "tests_passed": t["tests_passed"],
         "reward": t.get("reward"),
@@ -783,10 +783,10 @@ def _trial_row(t: dict) -> dict:
         "errored_calls_detail": " | ".join(t["errored_call_values"]),
         "agent_turns": t["agent_turns"],
         "tool_calls": t["tool_calls_total"],
-        "channel_calls": t["channel_calls"],
-        "off_channel_calls": t["off_channel_calls"],
+        "connector_calls": t["connector_calls"],
+        "off_connector_calls": t["off_connector_calls"],
         "errored_calls": t["errored_calls"],
-        "channel_output_chars": t["channel_output_chars"],
+        "connector_output_chars": t["connector_output_chars"],
         "prompt_baseline_tokens": t["prompt_baseline_tokens"],
         "input_tokens": t["n_input"],
         "cache_tokens": t["n_cache"],
@@ -816,13 +816,13 @@ with tab_trials:
         picked_trials = [trials[i] for i in picked_idx] if picked_idx else list(trials)
 
         x_axis = st.selectbox("X axis", ["time (s)", "step", "trial"], index=0)
-        only_channel = st.checkbox("Show only channel events", value=False)
-        # Style: color = channel, dash = (model, agent). Trials sharing all
-        # three render identically (intentional). Each distinct (channel,
+        only_connector = st.checkbox("Show only connector events", value=False)
+        # Style: color = connector, dash = (model, agent). Trials sharing all
+        # three render identically (intentional). Each distinct (connector,
         # model, agent) combination contributes a single legend entry.
         palette = px.colors.qualitative.Plotly
         dash_cycle = ["solid", "dot", "dash", "longdash", "dashdot", "longdashdot"]
-        modes_seen = sorted({t["channel"] for t in picked_trials})
+        modes_seen = sorted({t["connector"] for t in picked_trials})
         ma_seen = sorted({(t.get("model") or "?", t.get("agent") or "?") for t in picked_trials})
         color_for = {v: palette[i % len(palette)] for i, v in enumerate(modes_seen)}
         dash_for = {ma: dash_cycle[i % len(dash_cycle)] for i, ma in enumerate(ma_seen)}
@@ -835,15 +835,15 @@ with tab_trials:
             kinds = [
                 metrics_mod.classify_call(
                     {"function_name": m["name"], "arguments": m["args"]},
-                    t["connector"], t["channel"],
+                    t["app"], t["connector"],
                 )
                 for m in tl["marks"]
             ]
-            channel_flags = [k == "channel" for k in kinds]
+            connector_flags = [k == "connector" for k in kinds]
             for m, kind in zip(tl["marks"], kinds):
                 tool_call_rows.append({
                     "trial": t["trial"],
-                    "channel": t["channel"],
+                    "connector": t["connector"],
                     "t_s": round(m["t"], 2),
                     "cum_tokens": m["cum_tokens"],
                     "tool": m["name"],
@@ -852,7 +852,7 @@ with tab_trials:
                 })
             if not tl["line"]:
                 continue
-            mode = t["channel"]
+            mode = t["connector"]
             ma = (t.get("model") or "?", t.get("agent") or "?")
             color = color_for[mode]
             dash = dash_for[ma]
@@ -881,8 +881,8 @@ with tab_trials:
                     hovertemplate="%{x}<br>%{y} tokens<extra>" + hover_label + "</extra>",
                 ))
             visible_marks = [
-                (m, is_ch) for m, is_ch in zip(tl["marks"], channel_flags)
-                if not only_channel or is_ch
+                (m, is_ch) for m, is_ch in zip(tl["marks"], connector_flags)
+                if not only_connector or is_ch
             ]
             if visible_marks:
                 fig_tl.add_trace(go.Scatter(
@@ -937,8 +937,8 @@ with tab_trials:
             verdict = "pass" if t["tests_passed"] else ("error" if t["errored"] else "fail")
             agent = t.get("agent") or "?"
             model = t.get("model") or "?"
-            connectors_label = t.get("connectors") or "?"
-            channel_label = t.get("channel") or "?"
+            apps_label = t.get("apps") or "?"
+            connector_label = t.get("connector") or "?"
             task = t.get("task") or "?"
             trial_path = t.get("trial_uri") or str(JOBS_DIR / t["job"] / t["trial"])
             if trial_path.startswith("file://"):
@@ -966,8 +966,8 @@ with tab_trials:
                 f"**Trial:** `{t['trial']}`",
                 f"**Job:** `{t['job']}`",
                 f"**Task:** `{task}`",
-                f"**Connectors:** `{connectors_label}`",
-                f"**Channel:** `{channel_label}`",
+                f"**Apps:** `{apps_label}`",
+                f"**Connector:** `{connector_label}`",
                 f"**Agent:** {agent}",
                 f"**Model:** {model}",
                 f"**Verdict:** {verdict}",
@@ -1007,7 +1007,7 @@ with tab_trials:
                     {"t_s": r["t_s"], "kind": r["kind"], "tool": r["tool"],
                      "args": r["args"], "cum_tokens": r["cum_tokens"]}
                     for r in tool_call_rows
-                    if r["trial"] == t["trial"] and (not only_channel or r["kind"] == "channel")
+                    if r["trial"] == t["trial"] and (not only_connector or r["kind"] == "connector")
                 ]
                 st.caption(f"{len(filtered)} call(s)")
                 if filtered:
@@ -1019,8 +1019,8 @@ with tab_trials:
                 steps_data = load_trial_steps(t["job"], t["trial"], mtimes.get(t["job"], 0.0))
                 _render_trajectory_steps(
                     steps_data,
+                    t["app"],
                     t["connector"],
-                    t["channel"],
                     state_key=f"{t['job']}_{t['trial']}",
                 )
                 if steps_data:
@@ -1033,7 +1033,7 @@ with tab_trials:
                 if t["failed_criteria"]:
                     st.warning(f"Failed criteria: {t['failed_criteria']}")
                 if t["escape_call_values"]:
-                    st.caption("Off-channel calls: " + " | ".join(t["escape_call_values"]))
+                    st.caption("Off-connector calls: " + " | ".join(t["escape_call_values"]))
                 if t["errored_call_values"]:
                     st.caption("Errored calls: " + " | ".join(t["errored_call_values"]))
 
@@ -1062,10 +1062,10 @@ with tab_trials:
                             "" if t["prompt_baseline_tokens"] in (None, 0) else f"{t['prompt_baseline_tokens']:,}"),
                     _kv_row("agent turns", t["agent_turns"]),
                     _kv_row("tool calls (total)", t["tool_calls_total"]),
-                    _kv_row("channel calls", t["channel_calls"]),
-                    _kv_row("off-channel calls", t["off_channel_calls"]),
+                    _kv_row("connector calls", t["connector_calls"]),
+                    _kv_row("off-connector calls", t["off_connector_calls"]),
                     _kv_row("errored calls", t["errored_calls"]),
-                    _kv_row("channel output chars", f"{t['channel_output_chars']:,}"),
+                    _kv_row("connector output chars", f"{t['connector_output_chars']:,}"),
                 ]
                 st.dataframe(kv, hide_index=True, use_container_width=True, height=min(36 + 35 * len(kv), 600))
 
@@ -1081,12 +1081,12 @@ with tab_trials:
                 _render_trial_details(by_name[name])
 
 with tab_grid:
-    # Per (task, agent+model, channel) avg-tokens stacked bars, faceted by row=task, col=agent+model.
+    # Per (task, agent+model, connector) avg-tokens stacked bars, faceted by row=task, col=agent+model.
     grid_trials = [t for t in trials if t["tests_passed"]] if passed_only else trials
     cells: dict[tuple, dict] = defaultdict(lambda: {"n_input": 0, "n_cache": 0, "n_output": 0, "count": 0})
     for t in grid_trials:
         am = f"{t.get('agent') or '?'} / {t.get('model') or '?'}"
-        key = (t["task"], am, t["channel"])
+        key = (t["task"], am, t["connector"])
         c = cells[key]
         c["n_input"] += t["n_input"]
         c["n_cache"] += t["n_cache"]
@@ -1095,19 +1095,19 @@ with tab_grid:
     grid_rows = []
     for (task, am, mode), c in cells.items():
         n = c["count"] or 1
-        grid_rows.append({"task": task, "agent_model": am, "channel": mode,
+        grid_rows.append({"task": task, "agent_model": am, "connector": mode,
                           "kind": "input (cached)", "tokens": c["n_cache"] / n})
-        grid_rows.append({"task": task, "agent_model": am, "channel": mode,
+        grid_rows.append({"task": task, "agent_model": am, "connector": mode,
                           "kind": "input (uncached)", "tokens": max(0, c["n_input"] - c["n_cache"]) / n})
-        grid_rows.append({"task": task, "agent_model": am, "channel": mode,
+        grid_rows.append({"task": task, "agent_model": am, "connector": mode,
                           "kind": "output", "tokens": c["n_output"] / n})
     if not grid_rows:
         st.info("No trial data in the selected jobs (with 'passed trials only' on, only passed trials count).")
     else:
-        mode_order = sorted({r["channel"] for r in grid_rows})
+        mode_order = sorted({r["connector"] for r in grid_rows})
         fig_grid = px.bar(
             grid_rows,
-            x="channel",
+            x="connector",
             y="tokens",
             color="kind",
             facet_col="agent_model",
@@ -1115,7 +1115,7 @@ with tab_grid:
             barmode="stack",
             category_orders={
                 "kind": ["input (cached)", "input (uncached)", "output"],
-                "channel": mode_order,
+                "connector": mode_order,
             },
             color_discrete_map={
                 "input (cached)": "#9ecae1",
@@ -1137,8 +1137,8 @@ MATRIX_METRICS: dict[str, tuple[str, bool | None, tuple[float, float] | None, st
     "total": ("Trial count", None, None, "d"),
     "avg_cost_usd": ("Avg cost (USD)", False, None, "$.4f"),
     "avg_agent_exec_s": ("Avg agent exec (s)", False, None, ".1f"),
-    "avg_channel_calls": ("Avg channel calls", None, None, ".1f"),
-    "avg_off_channel_calls": ("Avg off-channel calls", False, None, ".2f"),
+    "avg_connector_calls": ("Avg connector calls", None, None, ".1f"),
+    "avg_off_connector_calls": ("Avg off-connector calls", False, None, ".2f"),
     "avg_errored_calls": ("Avg errored calls", False, None, ".2f"),
     "avg_prompt_baseline_tokens": ("Avg baseline prompt tokens", False, None, ",.0f"),
     "avg_output_tokens": ("Avg output tokens", False, None, ",.0f"),
@@ -1155,7 +1155,7 @@ with tab_matrix:
         )
     with c2:
         col_dims = st.multiselect(
-            "Columns", matrix_dim_options, default=["channel"], key="mx_cols",
+            "Columns", matrix_dim_options, default=["connector"], key="mx_cols",
         )
     with c3:
         metric = st.selectbox(

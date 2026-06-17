@@ -1,5 +1,5 @@
 job_name: apify-all-mcp-eval
-channel: mcp
+connector: mcp
 n_concurrent_trials: 2
 datasets:
   - path: tasks

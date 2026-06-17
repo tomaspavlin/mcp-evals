@@ -11,7 +11,7 @@ tags = ["read-only", "investigation"]
 axi_task = "merged_pr_ci_audit"
 
 [mcp_evals]
-connectors = ["github"]
+apps = ["github"]
 
 [verifier]
 timeout_sec = 600.0

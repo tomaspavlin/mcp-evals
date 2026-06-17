@@ -4,7 +4,7 @@ Stdlib-only by design: import this from any app (Streamlit dashboard, notebooks,
 scripts) without pulling in harbor or mcp_evals dependencies. Callers do IO and
 pass the parsed ATIF trajectory dict.
 
-Channel-matching logic is mirrored (not imported) by the in-container verifier
+Connector-matching logic is mirrored (not imported) by the in-container verifier
 scripts at tasks/*/tests/check.py; keep both in sync manually.
 
 Harness naming differences this module absorbs:
@@ -19,11 +19,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
-# Per-connector matcher registry. Hardcoded here rather than declared in
-# connectors/<name>/<channel>/ for now. `mcp_tools` is the allowlist of
+# Per-app matcher registry. Hardcoded here rather than declared in
+# apps/<name>/<connector>/ for now. `mcp_tools` is the allowlist of
 # normalized tool names needed for prefix-stripping harnesses (codex); extend
 # it when surfacing new tools in the eval.
-CONNECTORS: dict[str, dict[str, Any]] = {
+APPS: dict[str, dict[str, Any]] = {
     "apify": {
         "mcp_name_prefixes": ("apify_", "apify-", "mcp__apify__"),
         "mcp_tools": {
@@ -73,7 +73,7 @@ CONNECTORS: dict[str, dict[str, Any]] = {
 }
 
 MCPC_PREFIXES = ("mcpc ",)
-CHANNELS = ("mcp", "cli", "mcpc")
+CONNECTORS = ("mcp", "cli", "mcpc")
 
 SHELL_TOOLS = {"bash", "exec_command", "shell", "run_terminal_cmd", "local_shell"}
 WORKSPACE_TOOLS = {
@@ -88,14 +88,14 @@ _ERROR_SUBSTRINGS = ("command not found", "permission denied")
 
 
 def parse_run_axes(verifier_env: dict[str, str] | None) -> dict[str, str]:
-    """Read the per-connector channel map a job wrote to verifier env.
+    """Read the per-app connector map a job wrote to verifier env.
 
-    Prefers MCP_EVALS_CHANNELS_JSON (multi-connector); falls back to
-    MCP_EVALS_CHANNEL + MCP_EVALS_CONNECTORS when present. Returns {} when
+    Prefers MCP_EVALS_CONNECTORS_JSON (multi-app); falls back to
+    MCP_EVALS_CONNECTOR + MCP_EVALS_APPS when present. Returns {} when
     neither is set (e.g. old jobs predating these fields).
     """
     env = verifier_env or {}
-    raw = env.get("MCP_EVALS_CHANNELS_JSON")
+    raw = env.get("MCP_EVALS_CONNECTORS_JSON")
     if raw:
         try:
             data = json.loads(raw)
@@ -103,24 +103,24 @@ def parse_run_axes(verifier_env: dict[str, str] | None) -> dict[str, str]:
                 return {str(k): str(v) for k, v in data.items()}
         except json.JSONDecodeError:
             pass
-    channel = env.get("MCP_EVALS_CHANNEL")
-    connectors = (env.get("MCP_EVALS_CONNECTORS") or "").split(",")
-    connectors = [c.strip() for c in connectors if c.strip()]
-    if channel and connectors:
-        return {c: channel for c in connectors}
+    connector = env.get("MCP_EVALS_CONNECTOR")
+    apps = (env.get("MCP_EVALS_APPS") or "").split(",")
+    apps = [c.strip() for c in apps if c.strip()]
+    if connector and apps:
+        return {c: connector for c in apps}
     return {}
 
 
-def connector_for_task(task_name: str) -> str | None:
-    """Derive the primary connector from the task-name prefix (apify-*, github-*).
+def app_for_task(task_name: str) -> str | None:
+    """Derive the primary app from the task-name prefix (apify-*, github-*).
 
-    Multi-connector tasks should set `[mcp_evals].connectors` in task.toml
+    Multi-app tasks should set `[mcp_evals].apps` in task.toml
     instead of relying on this heuristic - this is a fallback used by the
     dashboard for legacy jobs that didn't write verifier env axes.
     """
-    for connector in CONNECTORS:
-        if (task_name or "").startswith(connector):
-            return connector
+    for app in APPS:
+        if (task_name or "").startswith(app):
+            return app
     return None
 
 
@@ -133,85 +133,85 @@ def _command(tc: dict) -> str:
     return ((args.get("command") or args.get("cmd")) or "").lstrip()
 
 
-def _normalize_mcp_tool(name: str, connector: str) -> str:
-    for prefix in CONNECTORS[connector]["mcp_name_prefixes"]:
+def _normalize_mcp_tool(name: str, app: str) -> str:
+    for prefix in APPS[app]["mcp_name_prefixes"]:
         if name.startswith(prefix):
             name = name[len(prefix):]
             break
     return name.replace("_", "-")
 
 
-def matches_channel(tc: dict, connector: str, channel: str) -> bool:
-    """True if the tool call interacts with `connector` through `channel`."""
-    if connector not in CONNECTORS:
+def matches_connector(tc: dict, app: str, connector: str) -> bool:
+    """True if the tool call interacts with `app` through `connector`."""
+    if app not in APPS:
         return False
-    # The `skill` channel is conceptually "CLI usage + extra prompt", so a
+    # The `skill` connector is conceptually "CLI usage + extra prompt", so a
     # skill cell's calls land on the shell. Match like cli.
-    if channel == "skill":
-        channel = "cli"
-    spec = CONNECTORS[connector]
+    if connector == "skill":
+        connector = "cli"
+    spec = APPS[app]
     name = _name(tc)
-    if channel == "mcp":
+    if connector == "mcp":
         if name.startswith(tuple(p.lower() for p in spec["mcp_name_prefixes"])):
             return True
-        return _normalize_mcp_tool(name, connector) in spec["mcp_tools"]
+        return _normalize_mcp_tool(name, app) in spec["mcp_tools"]
     if name not in SHELL_TOOLS:
         return False
     cmd = _command(tc)
-    if channel == "cli":
+    if connector == "cli":
         return cmd.startswith(spec["cli_prefixes"])
-    if channel == "mcpc":
+    if connector == "mcpc":
         return cmd.startswith(MCPC_PREFIXES)
     return False
 
 
-def _is_api_escape(tc: dict, connector: str) -> bool:
-    """Shell call hitting the connector's HTTP API directly (curl etc.)."""
+def _is_api_escape(tc: dict, app: str) -> bool:
+    """Shell call hitting the app's HTTP API directly (curl etc.)."""
     if _name(tc) not in SHELL_TOOLS:
         return False
     cmd = _command(tc)
-    return any(host in cmd for host in CONNECTORS[connector]["api_hosts"])
+    return any(host in cmd for host in APPS[app]["api_hosts"])
 
 
-def classify_call(tc: dict, connector: str | None, channel: str | None) -> str:
-    """Classify one tool call: channel | escape | workspace | other.
+def classify_call(tc: dict, app: str | None, connector: str | None) -> str:
+    """Classify one tool call: connector | escape | workspace | other.
 
-    channel   - interaction with the connector via the expected channel
-    escape    - interaction with the connector via any other surface
-                (wrong channel, or raw HTTP to the connector API)
+    connector   - interaction with the app via the expected connector
+    escape    - interaction with the app via any other surface
+                (wrong connector, or raw HTTP to the app API)
     workspace - file/editor/bookkeeping tools
     other     - everything else (generic shell, unrelated tools)
 
-    With no expected channel there is nothing to escape from, so connector
+    With no expected connector there is nothing to escape from, so app
     interactions fall through to workspace/other.
     """
-    if connector in CONNECTORS and channel:
-        if matches_channel(tc, connector, channel):
-            return "channel"
-        for ch in CHANNELS:
-            if ch != channel and matches_channel(tc, connector, ch):
+    if app in APPS and connector:
+        if matches_connector(tc, app, connector):
+            return "connector"
+        for ch in CONNECTORS:
+            if ch != connector and matches_connector(tc, app, ch):
                 return "escape"
-        if _is_api_escape(tc, connector):
+        if _is_api_escape(tc, app):
             return "escape"
     if _name(tc) in WORKSPACE_TOOLS:
         return "workspace"
     return "other"
 
 
-def classify_call_multi(tc: dict, channels_by_connector: dict[str, str]) -> str:
-    """Multi-connector classify: a call is `channel` if it matches the expected
-    channel for any wired connector; `escape` if it touches any wired connector
+def classify_call_multi(tc: dict, connectors_by_app: dict[str, str]) -> str:
+    """Multi-app classify: a call is `connector` if it matches the expected
+    connector for any wired app; `escape` if it touches any wired app
     via another surface; otherwise `workspace`/`other`."""
-    if not channels_by_connector:
+    if not connectors_by_app:
         return classify_call(tc, None, None)
-    for connector, channel in channels_by_connector.items():
-        if matches_channel(tc, connector, channel):
-            return "channel"
-    for connector, channel in channels_by_connector.items():
-        for ch in CHANNELS:
-            if ch != channel and matches_channel(tc, connector, ch):
+    for app, connector in connectors_by_app.items():
+        if matches_connector(tc, app, connector):
+            return "connector"
+    for app, connector in connectors_by_app.items():
+        for ch in CONNECTORS:
+            if ch != connector and matches_connector(tc, app, ch):
                 return "escape"
-        if _is_api_escape(tc, connector):
+        if _is_api_escape(tc, app):
             return "escape"
     if _name(tc) in WORKSPACE_TOOLS:
         return "workspace"
@@ -245,32 +245,32 @@ def call_errored(output: str) -> bool:
 
 def compute_trial_metrics(
     trajectory: dict,
-    channels_by_connector: dict[str, str] | None = None,
+    connectors_by_app: dict[str, str] | None = None,
     *,
-    channel: str | None = None,
     connector: str | None = None,
+    app: str | None = None,
 ) -> tuple[dict, list[dict]]:
     """Compute per-trial metrics from an ATIF trajectory.
 
-    Pass `channels_by_connector` (e.g. {"apify": "mcp", "github": "mcp"}) for
-    multi-connector runs. The single-connector shorthand `channel=` + `connector=`
+    Pass `connectors_by_app` (e.g. {"apify": "mcp", "github": "mcp"}) for
+    multi-app runs. The single-app shorthand `connector=` + `app=`
     is kept for callers that haven't migrated yet.
 
     Metrics:
       agent_turns            - steps with source == "agent"
       tool_calls_total       - all tool calls of any kind
-      channel_calls          - calls matching an expected (connector, channel) pair
-      off_channel_calls      - escapes: a wired connector reached via another surface
+      connector_calls          - calls matching an expected (app, connector) pair
+      off_connector_calls      - escapes: a wired app reached via another surface
       errored_calls          - calls whose observation looks like an error (heuristic)
-      channel_output_chars   - total observation content size of channel calls
+      connector_output_chars   - total observation content size of connector calls
       prompt_baseline_tokens - prompt_tokens of the first agent step with metrics
                                (None for harnesses without per-step metrics, e.g. codex)
     """
-    if channels_by_connector is None:
-        if connector and channel:
-            channels_by_connector = {connector: channel}
+    if connectors_by_app is None:
+        if app and connector:
+            connectors_by_app = {app: connector}
         else:
-            channels_by_connector = {}
+            connectors_by_app = {}
 
     steps = trajectory.get("steps", []) if trajectory else []
     per_call: list[dict] = []
@@ -293,7 +293,7 @@ def compute_trial_metrics(
                 "step_id": step.get("step_id"),
                 "name": tc.get("function_name") or "?",
                 "arguments": tc.get("arguments") or {},
-                "kind": classify_call_multi(tc, channels_by_connector),
+                "kind": classify_call_multi(tc, connectors_by_app),
                 "errored": call_errored(output) if output else False,
                 "output_chars": len(output),
                 "output_head": output[:160],
@@ -302,11 +302,11 @@ def compute_trial_metrics(
     metrics = {
         "agent_turns": agent_turns,
         "tool_calls_total": len(per_call),
-        "channel_calls": sum(1 for c in per_call if c["kind"] == "channel"),
-        "off_channel_calls": sum(1 for c in per_call if c["kind"] == "escape"),
+        "connector_calls": sum(1 for c in per_call if c["kind"] == "connector"),
+        "off_connector_calls": sum(1 for c in per_call if c["kind"] == "escape"),
         "errored_calls": sum(1 for c in per_call if c["errored"]),
-        "channel_output_chars": sum(
-            c["output_chars"] for c in per_call if c["kind"] == "channel"
+        "connector_output_chars": sum(
+            c["output_chars"] for c in per_call if c["kind"] == "connector"
         ),
         "prompt_baseline_tokens": prompt_baseline,
     }
@@ -322,7 +322,7 @@ def call_brief(c: dict) -> str:
 
 
 def call_values(per_call: list[dict]) -> dict[str, list[str]]:
-    """The offending calls behind the off_channel_calls / errored_calls counts."""
+    """The offending calls behind the off_connector_calls / errored_calls counts."""
     return {
         "escape_call_values": [call_brief(c) for c in per_call if c["kind"] == "escape"],
         "errored_call_values": [

@@ -7,9 +7,9 @@ Reads job data via Harbor's `JobScanner` (`harbor.viewer.scanner`), so `config.j
 ## Setup
 
 ```bash
-python3 -m venv apps/dashboard/.venv
-apps/dashboard/.venv/bin/pip install -r apps/dashboard/requirements.txt
-apps/dashboard/.venv/bin/pip install -e ../harbor   # provides harbor.viewer.scanner
+python3 -m venv dashboard/.venv
+dashboard/.venv/bin/pip install -r dashboard/requirements.txt
+dashboard/.venv/bin/pip install -e ../harbor   # provides harbor.viewer.scanner
 ```
 
 ## Run

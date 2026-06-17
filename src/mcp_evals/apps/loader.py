@@ -3,9 +3,9 @@ from pathlib import Path
 
 import yaml
 
-from mcp_evals.connectors.model import ConnectorCell
+from mcp_evals.apps.model import AppCell
 
-CONNECTORS_DIR = Path("connectors")
+APPS_DIR = Path("apps")
 
 
 def _resolve_skills(entries: list[Path], cell_dir: Path) -> list[Path]:
@@ -20,12 +20,12 @@ def _resolve_skills(entries: list[Path], cell_dir: Path) -> list[Path]:
         matches = sorted(Path(p) for p in _glob.glob(str(pattern)))
         if not matches:
             raise FileNotFoundError(
-                f"Connector cell skill path matched nothing: {pattern}"
+                f"App cell skill path matched nothing: {pattern}"
             )
         for match in matches:
             if not (match / "SKILL.md").is_file():
                 raise FileNotFoundError(
-                    f"Connector cell skill is not a skill directory "
+                    f"App cell skill is not a skill directory "
                     f"(missing SKILL.md): {match}"
                 )
             if match.resolve() not in {p.resolve() for p in resolved}:
@@ -33,22 +33,22 @@ def _resolve_skills(entries: list[Path], cell_dir: Path) -> list[Path]:
     return resolved
 
 
-def load_connector_cell(
-    connector: str, channel: str, root: Path = CONNECTORS_DIR
-) -> ConnectorCell:
-    """Load <root>/<connector>/<channel>/cell.yaml. instruction.md, setup.sh,
+def load_app_cell(
+    app: str, connector: str, root: Path = APPS_DIR
+) -> AppCell:
+    """Load <root>/<app>/<connector>/cell.yaml. instruction.md, setup.sh,
     teardown.sh, and skills/<name>/SKILL.md alongside are auto-discovered."""
-    cell_dir = root.expanduser() / connector / channel
+    cell_dir = root.expanduser() / app / connector
     yaml_path = cell_dir / "cell.yaml"
     if not yaml_path.is_file():
         raise FileNotFoundError(
-            f"Connector cell '{connector}/{channel}' not found: missing {yaml_path}"
+            f"App cell '{app}/{connector}' not found: missing {yaml_path}"
         )
 
     data = yaml.safe_load(yaml_path.read_text()) or {}
+    data["app"] = app
     data["connector"] = connector
-    data["channel"] = channel
-    cell = ConnectorCell.model_validate(data)
+    cell = AppCell.model_validate(data)
     cell.skills = _resolve_skills(cell.skills, cell_dir)
 
     instruction_md = cell_dir / "instruction.md"

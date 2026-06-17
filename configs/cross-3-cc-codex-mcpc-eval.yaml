@@ -1,5 +1,5 @@
 job_name: cross-3-cc-codex-mcpc-eval
-channel: mcpc
+connector: mcpc
 n_concurrent_trials: 3
 tasks:
   - path: tasks/cross-actor-username-and-repo-language

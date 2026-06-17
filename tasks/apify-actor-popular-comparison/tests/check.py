@@ -8,12 +8,12 @@ EXPECTED_WINNER = "apify/rag-web-browser"
 TRAJECTORY_PATH = "/logs/agent/trajectory.json"
 
 import json as _json
-CONNECTOR = "apify"
-_channels = _json.loads(os.environ.get("MCP_EVALS_CHANNELS_JSON") or "{}")
-EXPECTED_CHANNEL = _channels.get(CONNECTOR) or os.environ.get("MCP_EVALS_CHANNEL") or None
-# `skill` channel is CLI usage + extra prompt; match like cli.
-if EXPECTED_CHANNEL == "skill":
-    EXPECTED_CHANNEL = "cli"
+APP = "apify"
+_connectors = _json.loads(os.environ.get("MCP_EVALS_CONNECTORS_JSON") or "{}")
+EXPECTED_CONNECTOR = _connectors.get(APP) or os.environ.get("MCP_EVALS_CONNECTOR") or None
+# `skill` connector is CLI usage + extra prompt; match like cli.
+if EXPECTED_CONNECTOR == "skill":
+    EXPECTED_CONNECTOR = "cli"
 
 
 def _tool_calls() -> list[dict]:
@@ -21,7 +21,7 @@ def _tool_calls() -> list[dict]:
     return collect_tool_calls(data) if data else []
 
 
-# Channel matching mirrored from src/mcp_evals/metrics.py (cannot import the
+# Connector matching mirrored from src/mcp_evals/metrics.py (cannot import the
 # package inside the verifier container); keep both in sync manually.
 APIFY_MCP_TOOLS = {
     "fetch-actor-details",
@@ -48,39 +48,39 @@ def _normalize_mcp_tool(name: str) -> str:
     return name.replace("_", "-")
 
 
-def _matches_channel(tc: dict, channel: str) -> bool:
+def _matches_connector(tc: dict, connector: str) -> bool:
     name = (tc.get("function_name") or "").lower()
     args = tc.get("arguments") or {}
     cmd = ((args.get("command") or args.get("cmd")) or "").lstrip()
-    if channel == "mcp":
+    if connector == "mcp":
         return name.startswith(MCP_NAME_PREFIXES) or _normalize_mcp_tool(name) in APIFY_MCP_TOOLS
-    if channel == "cli":
+    if connector == "cli":
         return name in SHELL_TOOLS and cmd.startswith("apify ")
-    if channel == "mcpc":
+    if connector == "mcpc":
         return name in SHELL_TOOLS and cmd.startswith("mcpc ")
     return False
 
 
 def _log_summary() -> None:
     calls = _tool_calls()
-    print(f"[verifier] expected_channel={EXPECTED_CHANNEL!r} tool_calls={len(calls)}")
+    print(f"[verifier] expected_connector={EXPECTED_CONNECTOR!r} tool_calls={len(calls)}")
     for i, tc in enumerate(calls):
         name = tc.get("function_name", "")
         args = tc.get("arguments") or {}
         cmd = args.get("command") or args.get("cmd")
         snippet = cmd if cmd else str(args)
-        match = "*" if EXPECTED_CHANNEL and _matches_channel(tc, EXPECTED_CHANNEL) else " "
+        match = "*" if EXPECTED_CONNECTOR and _matches_connector(tc, EXPECTED_CONNECTOR) else " "
         print(f"[verifier] {match} {i:3d} {name}  {str(snippet)[:140]}")
 
 
 _log_summary()
 
 
-@criterion(description=f"agent used expected channel ({EXPECTED_CHANNEL or 'n/a'})")
-def used_expected_channel(workspace: Path) -> bool:
-    if not EXPECTED_CHANNEL:
+@criterion(description=f"agent used expected connector ({EXPECTED_CONNECTOR or 'n/a'})")
+def used_expected_connector(workspace: Path) -> bool:
+    if not EXPECTED_CONNECTOR:
         return True
-    return any(_matches_channel(tc, EXPECTED_CHANNEL) for tc in _tool_calls())
+    return any(_matches_connector(tc, EXPECTED_CONNECTOR) for tc in _tool_calls())
 
 
 @criterion

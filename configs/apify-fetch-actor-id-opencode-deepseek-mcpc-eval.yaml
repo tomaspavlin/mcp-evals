@@ -1,5 +1,5 @@
 job_name: apify-fetch-actor-id-opencode-deepseek-mcpc-eval
-channel: mcpc
+connector: mcpc
 tasks:
   - path: tasks/apify-fetch-actor-id
 agents:

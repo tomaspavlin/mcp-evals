@@ -1,6 +1,6 @@
-# Single base image used by every task. Installs every connector tool we
+# Single base image used by every task. Installs every app tool we
 # evaluate (apify CLI, gh CLI, mcp-remote, @apify/mcpc) plus stdio proxies for
-# the remote MCPs. Channel selection happens at runtime (which mcp_servers /
+# the remote MCPs. Connector selection happens at runtime (which mcp_servers /
 # instructions / setup scripts the agent gets) - the image is fixed, so its
 # dirhash is stable and the sandbox template cache stays hot across runs.
 

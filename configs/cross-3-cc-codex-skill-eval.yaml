@@ -1,6 +1,6 @@
-# Skill channel is apify-only; wire apify via skill + github via cli.
+# Skill connector is apify-only; wire apify via skill + github via cli.
 job_name: cross-3-cc-codex-skill-eval
-connector_channels:
+app_connectors:
   apify: skill
   github: cli
 n_concurrent_trials: 3

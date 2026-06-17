@@ -10,7 +10,7 @@ category = "connectivity"
 tags = ["read-only", "smoke-test"]
 
 [mcp_evals]
-connectors = ["apify"]
+apps = ["apify"]
 
 [verifier]
 timeout_sec = 60.0

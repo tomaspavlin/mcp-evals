@@ -9,7 +9,7 @@ from mcp_evals.metrics import (
     call_errored,
     classify_call,
     compute_trial_metrics,
-    connector_for_task,
+    app_for_task,
     failed_criteria,
 )
 from mcp_evals.metrics import tests_passed as check_tests_passed
@@ -20,25 +20,25 @@ def _call(name, **arguments):
 
 
 class TestClassifyCall:
-    def test_cli_channel_across_harnesses(self):
+    def test_cli_connector_across_harnesses(self):
         claude = _call("Bash", command="apify actors info apify/web-scraper")
         opencode = _call("bash", command="apify api GET /v2/acts/x")
         codex = _call("exec_command", cmd="apify actors ls")
         for tc in (claude, opencode, codex):
-            assert classify_call(tc, "apify", "cli") == "channel"
+            assert classify_call(tc, "apify", "cli") == "connector"
 
-    def test_mcp_channel_across_harnesses(self):
+    def test_mcp_connector_across_harnesses(self):
         claude = _call("mcp__apify__fetch-actor-details", actor="apify/web-scraper")
         opencode = _call("apify_fetch-actor-details", actor="apify/web-scraper")
         codex = _call("fetch_actor_details", actor="apify/web-scraper")
         for tc in (claude, opencode, codex):
-            assert classify_call(tc, "apify", "mcp") == "channel"
+            assert classify_call(tc, "apify", "mcp") == "connector"
 
-    def test_mcpc_channel(self):
+    def test_mcpc_connector(self):
         tc = _call("bash", command="mcpc apify tools")
-        assert classify_call(tc, "apify", "mcpc") == "channel"
+        assert classify_call(tc, "apify", "mcpc") == "connector"
 
-    def test_wrong_channel_is_escape(self):
+    def test_wrong_connector_is_escape(self):
         cli_in_mcp = _call("bash", command="apify actors ls")
         assert classify_call(cli_in_mcp, "apify", "mcp") == "escape"
         mcp_in_cli = _call("apify_fetch-actor-details")
@@ -55,15 +55,15 @@ class TestClassifyCall:
         assert classify_call(_call("bash", command="cat /etc/hosts"), "apify", "cli") == "other"
 
     def test_github_target(self):
-        assert classify_call(_call("bash", command="gh pr view 1"), "github", "cli") == "channel"
-        assert classify_call(_call("mcp__github__get_pull_request"), "github", "mcp") == "channel"
+        assert classify_call(_call("bash", command="gh pr view 1"), "github", "cli") == "connector"
+        assert classify_call(_call("mcp__github__get_pull_request"), "github", "mcp") == "connector"
         curl = _call("bash", command="curl https://api.github.com/repos/x/y/pulls/1")
         assert classify_call(curl, "github", "cli") == "escape"
 
-    def test_unknown_target_or_channel(self):
+    def test_unknown_target_or_connector(self):
         tc = _call("bash", command="apify actors ls")
         assert classify_call(tc, None, "cli") == "other"
-        # No expected channel -> nothing to escape from.
+        # No expected connector -> nothing to escape from.
         assert classify_call(tc, "apify", None) == "other"
 
 
@@ -120,13 +120,13 @@ class TestComputeTrialMetrics:
         assert metrics == {
             "agent_turns": 3,
             "tool_calls_total": 3,
-            "channel_calls": 1,
-            "off_channel_calls": 1,
+            "connector_calls": 1,
+            "off_connector_calls": 1,
             "errored_calls": 1,
-            "channel_output_chars": 500,
+            "connector_output_chars": 500,
             "prompt_baseline_tokens": 12970,
         }
-        assert [c["kind"] for c in per_call] == ["channel", "escape", "workspace"]
+        assert [c["kind"] for c in per_call] == ["connector", "escape", "workspace"]
         assert per_call[1]["output_head"] == "Error: blocked"
 
     def test_call_values(self):
@@ -148,7 +148,7 @@ class TestComputeTrialMetrics:
         }
         metrics, _ = compute_trial_metrics(traj, {"apify": "mcp"})
         assert metrics["prompt_baseline_tokens"] is None
-        assert metrics["channel_calls"] == 1
+        assert metrics["connector_calls"] == 1
 
     def test_empty_trajectory(self):
         metrics, per_call = compute_trial_metrics({}, {"apify": "mcp"})
@@ -161,7 +161,7 @@ class TestRewardDetails:
         "reward": {
             "score": 0.6667,
             "criteria": [
-                {"name": "used_expected_channel", "value": 1.0, "raw": True},
+                {"name": "used_expected_connector", "value": 1.0, "raw": True},
                 {"name": "actor_id_file_exists", "value": 1.0, "raw": True},
                 {"name": "actor_id_matches", "value": 0.0, "raw": False},
             ],
@@ -179,7 +179,7 @@ class TestRewardDetails:
         assert failed_criteria(self.DETAILS) == ["actor_id_matches"]
 
 
-def test_connector_for_task():
-    assert connector_for_task("apify-fetch-actor-id") == "apify"
-    assert connector_for_task("github-pr-info") == "github"
-    assert connector_for_task("e2b-smoke") is None
+def test_app_for_task():
+    assert app_for_task("apify-fetch-actor-id") == "apify"
+    assert app_for_task("github-pr-info") == "github"
+    assert app_for_task("e2b-smoke") is None

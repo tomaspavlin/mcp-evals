@@ -9,20 +9,20 @@ efficiency, and tool-call behavior. Built on
 
 How it works:
 
-1. Define a **connector** (a third-party service: apify, github, ...) under
-   `connectors/<name>/<channel>/` for each access **channel** you want to
+1. Define an **app** (a third-party service: apify, github, ...) under
+   `apps/<name>/<connector>/` for each access **connector** you want to
    compare: `mcp`, `cli`, `mcpc`, `skill`. Each cell holds the MCP server
    config, the CLI setup, or the skill the agent gets.
 2. Define tasks in `tasks/`: an instruction the agent should accomplish, plus
-   a verifier. Each task declares which connectors it needs via
-   `[mcp_evals].connectors = [...]` in its `task.toml` - one task can use
-   several connectors (e.g. apify + github together).
+   a verifier. Each task declares which apps it needs via
+   `[mcp_evals].apps = [...]` in its `task.toml` - one task can use
+   several apps (e.g. apify + github together).
 3. `mcp-evals run` launches the agents in sandboxes on every task with the
-   chosen channel(s) wired up, and runs the verifiers.
+   chosen connector(s) wired up, and runs the verifiers.
 4. Results, including full execution traces, are stored structured under
    `jobs/`. Inspect them in the results browser or dashboard, or point a coding
    agent (e.g. Claude Code) at them to diagnose failures and iterate on your
-   skills and connectors.
+   skills and apps.
 
 ## Concepts
 
@@ -30,12 +30,12 @@ Harbor primitives (Task, Trial, Job, Agent, Environment, Dataset) are documented
 at https://www.harborframework.com/docs/core-concepts. `mcp-evals` adds two
 project-specific axes on top:
 
-- **connector** - third-party service the agent talks to (`apify`, `github`, `linear`, `notion`, ...).
-- **channel** - how the agent reaches it: `mcp`, `cli`, `mcpc`, or `skill`. One channel per run by default; `connector_channels:` for hybrid.
-- **cell** - one (connector, channel) pair on disk: `connectors/<connector>/<channel>/{cell.yaml, instruction.md, [setup.sh], [teardown.sh], [skills/]}`.
+- **app** - third-party service the agent talks to (`apify`, `github`, `linear`, `notion`, ...).
+- **connector** - how the agent reaches it: `mcp`, `cli`, `mcpc`, or `skill`. One connector per run by default; `app_connectors:` for hybrid.
+- **cell** - one (app, connector) pair on disk: `apps/<app>/<connector>/{cell.yaml, instruction.md, [setup.sh], [teardown.sh], [skills/]}`.
 
 Deep reference (cell file layout, `cell.yaml` fields, MCP-proxy wrapper template,
-verifier env contract, step-by-step for wiring a new connector):
+verifier env contract, step-by-step for wiring a new app):
 [`docs/mcp-task-pattern.md`](docs/mcp-task-pattern.md).
 
 ## Installation
@@ -70,17 +70,17 @@ key (`E2B_API_KEY` by default).
 
 The CLI reads eval definitions relative to the directory you run it from:
 
-- `connectors/<connector>/<channel>/` - `cell.yaml` (MCP servers, env, setup_env)
+- `apps/<app>/<connector>/` - `cell.yaml` (MCP servers, env, setup_env)
   plus optional `instruction.md`, `setup.sh`, `teardown.sh`, `skills/`. Examples
-  in this repo's `connectors/`.
+  in this repo's `apps/`.
 - `tasks/<name>/` - Harbor task dirs (`task.toml`, instruction, verifier).
-  `task.toml` declares which connectors the task needs via `[mcp_evals].connectors`.
-- `images/base/Dockerfile` - one shared sandbox image with every connector tool
+  `task.toml` declares which apps the task needs via `[mcp_evals].apps`.
+- `images/base/Dockerfile` - one shared sandbox image with every app tool
   installed; copied unchanged into each task's `environment/` at run time.
 
 ```
-mcp-evals run [-c CONFIG] [--channel CHANNEL] [--connector NAME]...
-              [--connectors-dir PATH] [-a AGENT] [-m MODEL]
+mcp-evals run [-c CONFIG] [--connector CONNECTOR] [--app NAME]...
+              [--apps-dir PATH] [-a AGENT] [-m MODEL]
               [-t TASK]... [-p DATASET_PATH]
               [--task-name GLOB]... [--exclude-task-name GLOB]...
               [--job-name NAME] [-o JOBS_DIR] [-k N_ATTEMPTS] [-n N_CONCURRENT]
@@ -89,28 +89,28 @@ mcp-evals run [-c CONFIG] [--channel CHANNEL] [--connector NAME]...
 
 Every flag overrides the corresponding config field; `mcp-evals run --help` for
 details. Defaults: E2B sandbox (`--env docker` / `--env daytona` to switch),
-`./connectors`, `./jobs`.
+`./apps`, `./jobs`.
 
 ### Examples
 
-One task, one agent (connectors auto-resolved from `task.toml`):
+One task, one agent (apps auto-resolved from `task.toml`):
 
 ```bash
-mcp-evals run --channel mcp -t tasks/my-task \
+mcp-evals run --connector mcp -t tasks/my-task \
   -a claude-code -m anthropic/claude-haiku-4.5 -y
 ```
 
-A multi-connector task (one task, two connectors wired up at once):
+A multi-app task (one task, two apps wired up at once):
 
 ```bash
-mcp-evals run --channel mcp -t tasks/cross-actor-meta-and-repo-meta -a oracle -y
+mcp-evals run --connector mcp -t tasks/cross-actor-meta-and-repo-meta -a oracle -y
 ```
 
 A whole task dataset with name filtering, oracle agent (replays the reference
 solution, no LLM):
 
 ```bash
-mcp-evals run --channel mcp -a oracle \
+mcp-evals run --connector mcp -a oracle \
   --dataset-path tasks --task-name 'apify-*' -y
 ```
 
@@ -123,13 +123,13 @@ mcp-evals run -c configs/my-eval.yaml -y
 Eval definitions somewhere else than the cwd (e.g. inside an app repo):
 
 ```bash
-mcp-evals run --connectors-dir evals/connectors -t evals/tasks/my-task \
-  -o evals/jobs --channel mcp -a claude-code -m ... -y
+mcp-evals run --apps-dir evals/apps -t evals/tasks/my-task \
+  -o evals/jobs --connector mcp -a claude-code -m ... -y
 ```
 
 ### Path notes
 
-- `--connectors-dir` is also a config field (`connectors_dir`); `-o/--jobs-dir`
+- `--apps-dir` is also a config field (`apps_dir`); `-o/--jobs-dir`
   matches `harbor run`.
 - Paths in a config file resolve relative to the cwd, not the config location.
 - Explicit `skills:` entries in `cell.yaml` resolve relative to that yaml's
@@ -157,7 +157,7 @@ mcp-evals dashboard evals/jobs     # any other jobs dir, e.g. from an app repo
 ```
 
 Flags: `-p/--port` (default 8501), `--host`, `--no-browser`. See
-`apps/dashboard/README.md` for first-time setup (dedicated streamlit venv).
+`dashboard/README.md` for first-time setup (dedicated streamlit venv).
 
 ## Known limitations
 
@@ -166,12 +166,12 @@ Flags: `-p/--port` (default 8501), `--host`, `--no-browser`. See
   codex trials; per-trial totals are unaffected. See `docs/harbor-constraints.md` and
   `docs/todo.md`.
 - Opencode truncates large tool outputs in the trajectory (the observation records a
-  "Full output saved to: ..." stub instead of the full content), so `channel_output_chars`
+  "Full output saved to: ..." stub instead of the full content), so `connector_output_chars`
   undercounts for verbose calls; cli/mcpc variants benefit most from this. Token totals
   are unaffected (reported by the API, not derived from content). See `docs/todo.md`.
-- Channel sweeps over the same task now share one Dockerfile (`images/base/`), so the
+- Connector sweeps over the same task now share one Dockerfile (`images/base/`), so the
   old "don't run same-task configs in parallel" restriction is lifted. Two runs against
-  the same task with different channels can run concurrently; the materialized
+  the same task with different connectors can run concurrently; the materialized
   `environment/` is identical so the sandbox template cache is reused either way.
 
 ## Credits
@@ -196,13 +196,13 @@ Smoke tests against the bundled evals — zero-cost (no LLM, just verifies the
 Harbor + sandbox loop):
 
 ```bash
-uv run mcp-evals run --channel mcp -t tasks/apify-fetch-actor-id -a oracle -y
+uv run mcp-evals run --connector mcp -t tasks/apify-fetch-actor-id -a oracle -y
 ```
 
 Real LLM via OpenRouter (cents):
 
 ```bash
-uv run mcp-evals run --channel mcp -t tasks/apify-fetch-actor-id -a claude-code -m anthropic/claude-haiku-4.5 -y
+uv run mcp-evals run --connector mcp -t tasks/apify-fetch-actor-id -a claude-code -m anthropic/claude-haiku-4.5 -y
 ```
 
 `harbor` is also usable standalone (`pipx install harbor`; add
