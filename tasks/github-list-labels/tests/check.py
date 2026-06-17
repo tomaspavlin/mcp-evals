@@ -74,6 +74,8 @@ def _matches_connector(tc: dict, connector: str) -> bool:
         return name.startswith(MCP_NAME_PREFIXES) or _normalize_mcp_tool(name) in GITHUB_MCP_TOOLS
     if connector == "cli":
         return name in SHELL_TOOLS and cmd.startswith("gh ")
+    if connector == "mcpc":
+        return name in SHELL_TOOLS and cmd.startswith("mcpc ")
     return False
 
 
