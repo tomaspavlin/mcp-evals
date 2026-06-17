@@ -49,7 +49,7 @@ uv run mcp-evals run --channel mcp -a oracle \
   --dataset-path tasks --task-name 'apify-*' --exclude-task-name apify-mcp-connected -y
 
 # Explicit connector list (overrides task.toml):
-uv run mcp-evals run --channel mcp --connector apify --connector github -a oracle -t tasks/cross-actor-and-repo -y
+uv run mcp-evals run --channel mcp --connector apify --connector github -a oracle -t tasks/cross-actor-meta-and-repo-meta -y
 ```
 
 Flags: `--channel {mcp,cli,mcpc,skill}`, `--connector NAME` (repeatable, optional), `--connectors-dir PATH` (default `./connectors`), `-a/--agent NAME`, `-m/--model MODEL` (omit for oracle), `-t/--task PATH` (repeatable), `-p/--dataset-path PATH`, `--task-name GLOB` (repeatable), `--exclude-task-name GLOB` (repeatable), `--job-name`, `-o/--jobs-dir PATH` (default `./jobs`), `-k/--n-attempts`, `-n/--n-concurrent`, `--env {docker,daytona,e2b,...}` (sandbox backend, default e2b), `--env-file`, `-y`. Each flag overrides whatever's in `-c`. Eval definitions can live in an external repo: see "Usage" in `README.md` (covers `--connectors-dir`, `-o/--jobs-dir`, and yaml-relative `skills:` globs).

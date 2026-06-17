@@ -83,6 +83,12 @@ The same problem applies to any provider whose cache we depend on - if you add a
 - **Interactive env-var confirmation.** Any task with `[environment.env]` triggers `Tasks in this run will load these from your environment. Proceed? (Y/n)` even when all vars are set. Blocks unattended runs unless stdin is fed (`yes | harbor run ...`).
 - **Job lock collision on re-run.** Re-running with the same `job_name` after the config changed errors with `FileExistsError: Job directory jobs/<name> already has a lock.json that does not match the resolved job lock` (`harbor/job.py:584`). This is the replay-safety check. Workaround: `--job-name <fresh>` or remove the prior `jobs/<name>/` dir.
 
+## Trajectory: per-step token counts not populated for codex
+
+`step.metrics` (prompt/completion/cached tokens) is populated for `claude-code` and `opencode` but is `None` on every step for `codex`. Codex's adapter (`harbor/agents/installed/codex.py:540-642`) only parses the rolling `token_count` event stream and rolls it into `final_metrics.total_*`, never attaching usage to individual `Step` objects.
+
+Implication: any metric or chart that wants per-step token attribution is unavailable for codex trials specifically; per-trial aggregates (`agent_result.n_*_tokens`, `trajectory.final_metrics.total_*`) are still correct. Reconstructing per-step usage would require diff'ing successive `token_count` events in the codex adapter - not worth it while we report trial-level numbers.
+
 ## Closest existing template
 
 - **`harbor-cookbook/harbor_cookbook/recipes/mcp-tools/`** - the canonical MCP-using task template. See [`./harbor-task-example.md`](./harbor-task-example.md) for the annotated walkthrough.

@@ -166,4 +166,4 @@ def actor_id_matches(workspace: Path) -> bool:
 - `tasks/apify-fetch-actor-id/` - real Apify call, not gameable. All four channels (mcp/cli/mcpc/skill) wired.
 - `tasks/apify-scrape-page/` - runs an Actor and reads its dataset. All four channels wired.
 - `tasks/apify-mcp-connected/` - connection smoke, gameable. MCP-only (no skill/cli equivalent makes sense).
-- `tasks/cross-actor-and-repo/` - cross-connector: looks up an Apify Actor and a GitHub repo in one trial; declares `connectors = ["apify", "github"]` and can mix channels via `connector_channels:`.
+- `tasks/cross-actor-meta-and-repo-meta/` - cross-connector: looks up an Apify Actor and a GitHub repo in one trial; declares `connectors = ["apify", "github"]` and can mix channels via `connector_channels:`.

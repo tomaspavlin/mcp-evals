@@ -26,7 +26,13 @@ def materialize_environment(task_path: Path, base_image_dir: Path = BASE_IMAGE_D
         raise NotADirectoryError(
             f"Expected a directory at {target}, found a file"
         )
+    # Fast-path: skip rmtree+copytree when target already matches base byte-for-byte.
+    # Eliminates the rmtree/copytree race under parallel channel sweeps that all
+    # materialize the same task dir (every run produces identical content anyway).
     if target.is_dir():
+        from dirhash import dirhash
+        if dirhash(target, "sha256") == dirhash(base_image_dir, "sha256"):
+            return target
         shutil.rmtree(target)
     shutil.copytree(base_image_dir, target)
     return target

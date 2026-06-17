@@ -103,7 +103,7 @@ mcp-evals run --channel mcp -t tasks/my-task \
 A multi-connector task (one task, two connectors wired up at once):
 
 ```bash
-mcp-evals run --channel mcp -t tasks/cross-actor-and-repo -a oracle -y
+mcp-evals run --channel mcp -t tasks/cross-actor-meta-and-repo-meta -a oracle -y
 ```
 
 A whole task dataset with name filtering, oracle agent (replays the reference
@@ -163,7 +163,8 @@ Flags: `-p/--port` (default 8501), `--host`, `--no-browser`. See
 
 - Codex trajectories carry no per-step token metrics (harbor converter gap), so the
   `prompt_baseline_tokens` metric and the dashboard's token timeline are unavailable for
-  codex trials; per-trial totals are unaffected. See `docs/todo.md`.
+  codex trials; per-trial totals are unaffected. See `docs/harbor-constraints.md` and
+  `docs/todo.md`.
 - Opencode truncates large tool outputs in the trajectory (the observation records a
   "Full output saved to: ..." stub instead of the full content), so `channel_output_chars`
   undercounts for verbose calls; cli/mcpc variants benefit most from this. Token totals
