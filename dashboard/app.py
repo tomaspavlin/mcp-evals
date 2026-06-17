@@ -571,8 +571,9 @@ n_trials_total = len(trials)
 # --- Sidebar dimension filters --------------------------------------------
 # Narrow the loaded trials by dimension. Every value is selected by default;
 # unticking narrows (untick down to one to isolate it). Options are derived from
-# the trials in the currently selected jobs, so they track the job selection. A
-# dimension with a single value is skipped (nothing to filter on).
+# the trials in the currently selected jobs, so they track the job selection. The
+# connector and agent+model chips always render (even with one value) for a
+# consistent sidebar; high-cardinality Task is shown only when there's >1 value.
 def _agent_model(t: dict) -> str:
     return f"{t.get('agent') or '?'} / {t.get('model') or '?'}"
 
@@ -583,20 +584,18 @@ _filters: list[tuple] = []
 # better than a dropdown. Task can be long and high-cardinality, so it stays a
 # multiselect and sits last.
 _chan_opts = sorted({t.get("connector") or "?" for t in trials})
-if len(_chan_opts) > 1:
-    _chosen = st.sidebar.pills(
-        f"Connector ({len(_chan_opts)})", _chan_opts, selection_mode="multi",
-        default=_chan_opts, key="filt_connector",
-    )
-    _filters.append((lambda t: t.get("connector") or "?", set(_chosen)))
+_chosen = st.sidebar.pills(
+    f"Connector ({len(_chan_opts)})", _chan_opts, selection_mode="multi",
+    default=_chan_opts, key="filt_connector",
+)
+_filters.append((lambda t: t.get("connector") or "?", set(_chosen)))
 
 _am_opts = sorted({_agent_model(t) for t in trials})
-if len(_am_opts) > 1:
-    _chosen = st.sidebar.pills(
-        f"Agent + model ({len(_am_opts)})", _am_opts, selection_mode="multi",
-        default=_am_opts, key="filt_am",
-    )
-    _filters.append((_agent_model, set(_chosen)))
+_chosen = st.sidebar.pills(
+    f"Agent + model ({len(_am_opts)})", _am_opts, selection_mode="multi",
+    default=_am_opts, key="filt_am",
+)
+_filters.append((_agent_model, set(_chosen)))
 
 _task_opts = sorted({t.get("task") or "?" for t in trials})
 if len(_task_opts) > 1:

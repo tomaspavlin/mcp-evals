@@ -17,7 +17,7 @@ apps = ["github"]
 timeout_sec = 300.0
 
 [agent]
-timeout_sec = 180.0
+timeout_sec = 300.0
 
 [verifier.env]
 OPENROUTER_API_KEY = "${OPENROUTER_API_KEY}"
