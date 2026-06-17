@@ -1,0 +1,19 @@
+version = "1.0"
+
+[task]
+name = "mcp-evals/cross-actor-meta-and-repo-meta"
+description = "Extract multiple metadata fields from one Apify Actor and one GitHub repo, emit them as JSON."
+
+[metadata]
+difficulty = "medium"
+category = "cross-connector"
+tags = ["read-only", "apify", "github", "multi-field"]
+
+[mcp_evals]
+connectors = ["apify", "github"]
+
+[verifier]
+timeout_sec = 60.0
+
+[agent]
+timeout_sec = 300.0

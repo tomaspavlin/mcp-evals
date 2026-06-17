@@ -1,0 +1,19 @@
+version = "1.0"
+
+[task]
+name = "mcp-evals/cross-search-actor-and-repo-licenses"
+description = "Search Apify Store, fetch two GitHub repos, compare topic counts, emit a combined JSON report."
+
+[metadata]
+difficulty = "hard"
+category = "cross-connector"
+tags = ["read-only", "apify", "github", "multi-step", "search"]
+
+[mcp_evals]
+connectors = ["apify", "github"]
+
+[verifier]
+timeout_sec = 60.0
+
+[agent]
+timeout_sec = 420.0
