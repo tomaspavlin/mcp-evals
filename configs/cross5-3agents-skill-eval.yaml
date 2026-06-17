@@ -1,0 +1,13 @@
+job_name: cross5-3agents-skill-eval
+connector: skill
+n_concurrent_trials: 2
+# skill cell exists only for apify; github (and the cross tasks needing it) have no skill connector
+tasks:
+  - path: tasks/apify-fetch-actor-id
+agents:
+  - name: claude-code
+    model_name: anthropic/claude-sonnet-4-6
+  - name: codex
+    model_name: openai/gpt-5.4
+  - name: opencode
+    model_name: openrouter/deepseek/deepseek-v4-pro@preset/deepseek-provider-only

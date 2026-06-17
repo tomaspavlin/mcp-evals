@@ -1,0 +1,16 @@
+job_name: cross5-3agents-cli-eval
+connector: cli
+n_concurrent_trials: 2
+tasks:
+  - path: tasks/cross-actor-meta-and-repo-meta
+  - path: tasks/cross-actor-username-and-repo-language
+  - path: tasks/cross-search-actor-and-repo-licenses
+  - path: tasks/apify-fetch-actor-id
+  - path: tasks/github-pr-info
+agents:
+  - name: claude-code
+    model_name: anthropic/claude-sonnet-4-6
+  - name: codex
+    model_name: openai/gpt-5.4
+  - name: opencode
+    model_name: openrouter/deepseek/deepseek-v4-pro@preset/deepseek-provider-only
