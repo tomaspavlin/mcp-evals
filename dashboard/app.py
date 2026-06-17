@@ -274,8 +274,7 @@ def _show_step_dialog(step: dict, kinds: list[str]) -> None:
 
 def _render_trajectory_steps(
     steps: list[dict],
-    app: str | None,
-    connector: str | None,
+    connectors_by_app: dict[str, str],
     state_key: str,
 ) -> None:
     if not steps:
@@ -287,9 +286,9 @@ def _render_trajectory_steps(
     step_kinds: list[list[str]] = []
     for s in steps:
         step_kinds.append([
-            metrics_mod.classify_call(
+            metrics_mod.classify_call_multi(
                 {"function_name": tc.get("function_name") or "?", "arguments": tc.get("arguments") or {}},
-                app, connector,
+                connectors_by_app,
             )
             for tc in s["tool_calls"]
         ])
@@ -390,6 +389,7 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
             "apps": apps_str,
             "connector": connector_str,
             "app": primary_app,
+            "connectors_by_app": connectors_by_app,
             "task": tr.task_name,
             "agent": tr.agent_info.name if tr.agent_info else None,
             "model": model_name,
@@ -841,9 +841,9 @@ with tab_trials:
             verdict = "pass" if t["tests_passed"] else ("error" if t["errored"] else "fail")
             hover_label = f"{t['trial']} · {verdict}<br>{t['job']}"
             kinds = [
-                metrics_mod.classify_call(
+                metrics_mod.classify_call_multi(
                     {"function_name": m["name"], "arguments": m["args"]},
-                    t["app"], t["connector"],
+                    t["connectors_by_app"],
                 )
                 for m in tl["marks"]
             ]
@@ -1027,8 +1027,7 @@ with tab_trials:
                 steps_data = load_trial_steps(t["job"], t["trial"], mtimes.get(t["job"], 0.0))
                 _render_trajectory_steps(
                     steps_data,
-                    t["app"],
-                    t["connector"],
+                    t["connectors_by_app"],
                     state_key=f"{t['job']}_{t['trial']}",
                 )
                 if steps_data:
