@@ -527,8 +527,6 @@ default_jobs = set(all_jobs[:5])
 # Non-filter controls first: these change how metrics are computed / linked, not
 # which trials are in scope.
 st.sidebar.markdown("**Settings**")
-# Efficiency of a failed trial is noise; default to comparing passed trials only.
-passed_only = st.sidebar.checkbox("Efficiency metrics: passed trials only", value=True)
 harbor_view_base = st.sidebar.text_input(
     "Harbor view base URL", value="http://127.0.0.1:8080",
     help="Base URL of `harbor view jobs`. Used to link trials to their detail page.",
@@ -537,6 +535,17 @@ harbor_view_base = st.sidebar.text_input(
 # Jobs is the first filter: it gates which trials get loaded; the dimension
 # filters below (connector / agent+model / task) then narrow what was loaded.
 st.sidebar.markdown("**Filters**")
+# Efficiency of a failed trial is noise; default to comparing passed trials only.
+# Applied globally so every tab sees the same set.
+passed_only = st.sidebar.checkbox("Passed trials only", value=False)
+# Errored trials have an exception; their metrics are usually unreliable noise.
+# Disabled when passed_only is on (it already excludes errored).
+hide_errored = st.sidebar.checkbox(
+    "Hide errored trials",
+    value=False,
+    disabled=passed_only,
+    help="Already implied by 'Passed trials only'." if passed_only else None,
+)
 st.sidebar.caption("Jobs")
 with st.sidebar.container(height=240):
     selected = [
@@ -556,6 +565,8 @@ for name in selected:
 if not trials:
     st.warning("Selected jobs have no trial results yet.")
     st.stop()
+
+n_trials_total = len(trials)
 
 # --- Sidebar dimension filters --------------------------------------------
 # Narrow the loaded trials by dimension. Every value is selected by default;
@@ -595,9 +606,14 @@ if len(_task_opts) > 1:
     _filters.append((lambda t: t.get("task") or "?", set(_chosen)))
 
 trials = [t for t in trials if all(g(t) in chosen for g, chosen in _filters)]
+if passed_only:
+    trials = [t for t in trials if t["tests_passed"]]
+elif hide_errored:
+    trials = [t for t in trials if not t["errored"]]
 if not trials:
     st.warning("No trials match the current filters. Loosen a filter in the sidebar "
-               "(an empty selection excludes everything).")
+               "(an empty selection excludes everything; 'Passed trials only' hides "
+               "failed and errored trials).")
     st.stop()
 
 tab_grouped, tab_trials, tab_grid, tab_matrix = st.tabs(["Grouped", "Trials", "Token grid", "Matrix"])
@@ -608,12 +624,7 @@ with tab_grouped:
         st.info("Pick at least one grouping dimension.")
     else:
         rows = aggregate(trials, group_by)
-        eff_trials = [t for t in trials if t["tests_passed"]] if passed_only else trials
-        eff_rows = aggregate(eff_trials, group_by) if eff_trials else []
-        eff_note = " (passed trials only)" if passed_only else ""
-        if passed_only:
-            st.caption(f"Efficiency charts cover {len(eff_trials)}/{len(trials)} trials "
-                       "(passed only); pass rate always covers all.")
+        st.caption(f"Showing {len(trials)} of {n_trials_total} trials.")
 
         st.subheader(f"Summary (grouped by {' | '.join(group_by)})")
         # Averages only: comparable across groups with different trial counts.
@@ -632,31 +643,31 @@ with tab_grouped:
             use_container_width=True,
         )
 
-        st.subheader("Pass rate")
-        # All verifier criteria true and no trial exception. Health gate, not an
-        # optimization target: anything under 1.0 deserves a look at the trial.
-        fig = px.bar(rows, x="group", y="pass_rate", hover_data=["passed", "errored", "total"])
-        fig.update_xaxes(title=" | ".join(group_by))
-        fig.update_yaxes(range=[0, 1])
-        st.plotly_chart(fig, use_container_width=True)
+        # Pass rate and avg reward are trivial (1.0) once we restrict to passed
+        # trials, so hide them when the filter is on.
+        if not passed_only:
+            st.subheader("Pass rate")
+            # All verifier criteria true and no trial exception. Health gate, not
+            # an optimization target: anything under 1.0 deserves a look at the
+            # trial.
+            fig = px.bar(rows, x="group", y="pass_rate", hover_data=["passed", "errored", "total"])
+            fig.update_xaxes(title=" | ".join(group_by))
+            fig.update_yaxes(range=[0, 1])
+            st.plotly_chart(fig, use_container_width=True)
 
-        # Float reward from the verifier's rewards dict; captures partial credit
-        # that pass_rate's all-or-nothing check throws away. None for trials
-        # whose verifier emitted no numeric reward.
-        reward_rows = [r for r in rows if r["avg_reward"] is not None]
-        if reward_rows:
-            st.subheader("Avg reward")
-            fig_rw = px.bar(reward_rows, x="group", y="avg_reward", hover_data=["total"])
-            fig_rw.update_xaxes(title=" | ".join(group_by))
-            st.plotly_chart(fig_rw, use_container_width=True)
+            # Float reward from the verifier's rewards dict; captures partial
+            # credit that pass_rate's all-or-nothing check throws away. None for
+            # trials whose verifier emitted no numeric reward.
+            reward_rows = [r for r in rows if r["avg_reward"] is not None]
+            if reward_rows:
+                st.subheader("Avg reward")
+                fig_rw = px.bar(reward_rows, x="group", y="avg_reward", hover_data=["total"])
+                fig_rw.update_xaxes(title=" | ".join(group_by))
+                st.plotly_chart(fig_rw, use_container_width=True)
 
-        if not eff_rows:
-            st.warning("No passed trials in the selection; efficiency charts are empty. "
-                       "Untick 'passed trials only' to include failed trials.")
-
-        st.subheader(f"Connector activity (avg per trial){eff_note}")
+        st.subheader("Connector activity (avg per trial)")
         activity_rows = []
-        for r in eff_rows:
+        for r in rows:
             activity_rows.append({"group": r["group"], "metric": "connector calls", "value": r["avg_connector_calls"]})
             activity_rows.append({"group": r["group"], "metric": "off-connector calls", "value": r["avg_off_connector_calls"]})
             activity_rows.append({"group": r["group"], "metric": "errored calls", "value": r["avg_errored_calls"]})
@@ -666,7 +677,7 @@ with tab_grouped:
             fig_act.update_xaxes(title=" | ".join(group_by))
             st.plotly_chart(fig_act, use_container_width=True)
 
-        st.subheader(f"Connector output size (avg chars per trial){eff_note}")
+        st.subheader("Connector output size (avg chars per trial)")
         # Verbosity of the target surface: total tool-result chars of on-connector
         # calls. ~tokens = chars / 4. Caveat: opencode truncates huge bash
         # outputs in the trajectory, so cli numbers can undercount (see README
@@ -677,7 +688,7 @@ with tab_grouped:
                 "chars": r["avg_connector_output_chars"],
                 "est_tokens": int(r["avg_connector_output_chars"] / 4),
             }
-            for r in eff_rows
+            for r in rows
         ]
         if output_rows:
             fig_out = px.bar(output_rows, x="group", y="chars", hover_data=["est_tokens"])
@@ -685,8 +696,7 @@ with tab_grouped:
             st.plotly_chart(fig_out, use_container_width=True)
 
         # The calls behind the off-connector / errored counts, plus failed tests
-        # and trial exceptions. All selected trials, not just eff_trials: a
-        # failed trial's escapes are exactly what you want to inspect.
+        # and trial exceptions.
         flagged = []
         for t in trials:
             for v in t["escape_call_values"]:
@@ -715,56 +725,54 @@ with tab_grouped:
         else:
             st.info("No per-step token metrics in the selected trials (codex trajectories lack them).")
 
-        if eff_rows:
-            st.subheader(f"Avg cost per trial (USD){eff_note}")
-            fig_cost = px.bar(eff_rows, x="group", y="avg_cost_usd", hover_data=["cost_usd", "total"])
-            fig_cost.update_xaxes(title=" | ".join(group_by))
-            st.plotly_chart(fig_cost, use_container_width=True)
+        st.subheader("Avg cost per trial (USD)")
+        fig_cost = px.bar(rows, x="group", y="avg_cost_usd", hover_data=["cost_usd", "total"])
+        fig_cost.update_xaxes(title=" | ".join(group_by))
+        st.plotly_chart(fig_cost, use_container_width=True)
 
-        if eff_rows:
-            st.subheader(f"Avg duration per trial (s){eff_note}")
-            duration_rows = []
-            for r in eff_rows:
-                duration_rows.append({"group": r["group"], "phase": "env setup", "seconds": r["avg_env_setup_s"]})
-                duration_rows.append({"group": r["group"], "phase": "agent setup", "seconds": r["avg_agent_setup_s"]})
-                duration_rows.append({"group": r["group"], "phase": "agent exec", "seconds": r["avg_agent_exec_s"]})
-                duration_rows.append({"group": r["group"], "phase": "verifier", "seconds": r["avg_verifier_s"]})
-            fig_dur = px.bar(
-                duration_rows,
-                x="group",
-                y="seconds",
-                color="phase",
-                barmode="stack",
-                category_orders={"phase": ["env setup", "agent setup", "agent exec", "verifier"]},
-            )
-            fig_dur.update_xaxes(title=" | ".join(group_by))
-            st.plotly_chart(fig_dur, use_container_width=True)
+        st.subheader("Avg duration per trial (s)")
+        duration_rows = []
+        for r in rows:
+            duration_rows.append({"group": r["group"], "phase": "env setup", "seconds": r["avg_env_setup_s"]})
+            duration_rows.append({"group": r["group"], "phase": "agent setup", "seconds": r["avg_agent_setup_s"]})
+            duration_rows.append({"group": r["group"], "phase": "agent exec", "seconds": r["avg_agent_exec_s"]})
+            duration_rows.append({"group": r["group"], "phase": "verifier", "seconds": r["avg_verifier_s"]})
+        fig_dur = px.bar(
+            duration_rows,
+            x="group",
+            y="seconds",
+            color="phase",
+            barmode="stack",
+            category_orders={"phase": ["env setup", "agent setup", "agent exec", "verifier"]},
+        )
+        fig_dur.update_xaxes(title=" | ".join(group_by))
+        st.plotly_chart(fig_dur, use_container_width=True)
 
-            st.subheader(f"Avg token usage per trial{eff_note}")
-            # n_input_tokens includes cache; uncached = input - cache. See harbor/viewer/server.py:_uncached_input.
-            token_rows = []
-            for r in eff_rows:
-                n_in = r["avg_input_tokens"] or 0
-                n_cache = r["avg_cache_tokens"] or 0
-                n_out = r["avg_output_tokens"] or 0
-                token_rows.append({"group": r["group"], "kind": "input (cached)", "tokens": n_cache})
-                token_rows.append({"group": r["group"], "kind": "input (uncached)", "tokens": max(0, n_in - n_cache)})
-                token_rows.append({"group": r["group"], "kind": "output", "tokens": n_out})
-            fig_tokens = px.bar(
-                token_rows,
-                x="group",
-                y="tokens",
-                color="kind",
-                barmode="stack",
-                category_orders={"kind": ["input (cached)", "input (uncached)", "output"]},
-                color_discrete_map={
-                    "input (cached)": "#9ecae1",
-                    "input (uncached)": "#d62728",
-                    "output": "#2ca02c",
-                },
-            )
-            fig_tokens.update_xaxes(title=" | ".join(group_by))
-            st.plotly_chart(fig_tokens, use_container_width=True)
+        st.subheader("Avg token usage per trial")
+        # n_input_tokens includes cache; uncached = input - cache. See harbor/viewer/server.py:_uncached_input.
+        token_rows = []
+        for r in rows:
+            n_in = r["avg_input_tokens"] or 0
+            n_cache = r["avg_cache_tokens"] or 0
+            n_out = r["avg_output_tokens"] or 0
+            token_rows.append({"group": r["group"], "kind": "input (cached)", "tokens": n_cache})
+            token_rows.append({"group": r["group"], "kind": "input (uncached)", "tokens": max(0, n_in - n_cache)})
+            token_rows.append({"group": r["group"], "kind": "output", "tokens": n_out})
+        fig_tokens = px.bar(
+            token_rows,
+            x="group",
+            y="tokens",
+            color="kind",
+            barmode="stack",
+            category_orders={"kind": ["input (cached)", "input (uncached)", "output"]},
+            color_discrete_map={
+                "input (cached)": "#9ecae1",
+                "input (uncached)": "#d62728",
+                "output": "#2ca02c",
+            },
+        )
+        fig_tokens.update_xaxes(title=" | ".join(group_by))
+        st.plotly_chart(fig_tokens, use_container_width=True)
 
 def _trial_row(t: dict) -> dict:
     row = {
@@ -1082,9 +1090,8 @@ with tab_trials:
 
 with tab_grid:
     # Per (task, agent+model, connector) avg-tokens stacked bars, faceted by row=task, col=agent+model.
-    grid_trials = [t for t in trials if t["tests_passed"]] if passed_only else trials
     cells: dict[tuple, dict] = defaultdict(lambda: {"n_input": 0, "n_cache": 0, "n_output": 0, "count": 0})
-    for t in grid_trials:
+    for t in trials:
         am = f"{t.get('agent') or '?'} / {t.get('model') or '?'}"
         key = (t["task"], am, t["connector"])
         c = cells[key]
@@ -1102,7 +1109,7 @@ with tab_grid:
         grid_rows.append({"task": task, "agent_model": am, "connector": mode,
                           "kind": "output", "tokens": c["n_output"] / n})
     if not grid_rows:
-        st.info("No trial data in the selected jobs (with 'passed trials only' on, only passed trials count).")
+        st.info("No trial data in the selected jobs.")
     else:
         mode_order = sorted({r["connector"] for r in grid_rows})
         fig_grid = px.bar(
@@ -1164,13 +1171,7 @@ with tab_matrix:
         )
     label, higher_better, fixed_range, tick_fmt = MATRIX_METRICS[metric]
 
-    # pass_rate / avg_reward want the failed trials too (avg_reward captures the
-    # partial credit pass_rate throws away); everything else respects the toggle.
-    matrix_trials = (
-        [t for t in trials if t["tests_passed"]]
-        if (passed_only and metric not in ("pass_rate", "avg_reward"))
-        else trials
-    )
+    matrix_trials = trials
 
     if not row_dims or not col_dims:
         st.info("Pick at least one row and one column dimension.")
