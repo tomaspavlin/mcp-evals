@@ -297,6 +297,8 @@ def _render_trajectory_steps(
     for s, kinds in zip(steps, step_kinds):
         preview = _first_line(_normalize_content(s["message"]))
         kind_label = ",".join(sorted(set(kinds))) if kinds else ""
+        prompt = (s["metrics"] or {}).get("prompt_tokens")
+        cache_rate = (s["cached"] / prompt) if (s["cached"] is not None and prompt) else None
         rows.append({
             "#": s["step_id"],
             "source": s["source"],
@@ -305,6 +307,7 @@ def _render_trajectory_steps(
             "Σs": _fmt_secs(s["t_offset"]) if s["t_offset"] is not None else "",
             "cached": _fmt_n(s["cached"]),
             "uncached": _fmt_n(s["uncached"]),
+            "cache%": "" if cache_rate is None else f"{cache_rate:.0%}",
             "out": _fmt_n(s["output"]),
             "Σ tok": _fmt_n(s["cum_billed"]),
             "kind": kind_label,
@@ -797,6 +800,7 @@ def _trial_row(t: dict) -> dict:
         "prompt_baseline_tokens": t["prompt_baseline_tokens"],
         "input_tokens": t["n_input"],
         "cache_tokens": t["n_cache"],
+        "cache_hit_rate": (t["n_cache"] / t["n_input"]) if t["n_input"] else None,
         "output_tokens": t["n_output"],
         "cost_usd": t["cost_usd"],
         "agent_exec_s": t["t_agent_exec"],
@@ -1147,6 +1151,8 @@ MATRIX_METRICS: dict[str, tuple[str, bool | None, tuple[float, float] | None, st
     "avg_errored_calls": ("Avg errored calls", False, None, ".2f"),
     "avg_prompt_baseline_tokens": ("Avg baseline prompt tokens", False, None, ",.0f"),
     "avg_output_tokens": ("Avg output tokens", False, None, ",.0f"),
+    "avg_cache_tokens": ("Avg cached tokens", None, None, ",.0f"),
+    "avg_uncached_input_tokens": ("Avg uncached tokens", False, None, ",.0f"),
     "cache_hit_rate": ("Cache hit rate", True, (0.0, 1.0), ".0%"),
 }
 
