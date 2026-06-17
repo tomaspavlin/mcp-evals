@@ -523,22 +523,30 @@ def _job_trial_count(job_name: str, mtime: float) -> int:
 job_mtimes = {d.name: d.stat().st_mtime for d in job_dirs}
 trial_counts = {j: _job_trial_count(j, job_mtimes[j]) for j in all_jobs}
 default_jobs = set(all_jobs[:5])
-st.sidebar.markdown("**Jobs**")
-with st.sidebar.container(height=320):
+
+# Non-filter controls first: these change how metrics are computed / linked, not
+# which trials are in scope.
+st.sidebar.markdown("**Settings**")
+# Efficiency of a failed trial is noise; default to comparing passed trials only.
+passed_only = st.sidebar.checkbox("Efficiency metrics: passed trials only", value=True)
+harbor_view_base = st.sidebar.text_input(
+    "Harbor view base URL", value="http://127.0.0.1:8080",
+    help="Base URL of `harbor view jobs`. Used to link trials to their detail page.",
+).rstrip("/")
+
+# Jobs is the first filter: it gates which trials get loaded; the dimension
+# filters below (channel / agent+model / task) then narrow what was loaded.
+st.sidebar.markdown("**Filters**")
+st.sidebar.caption("Jobs")
+with st.sidebar.container(height=240):
     selected = [
         j for j in all_jobs
         if st.checkbox(f"{j} ({trial_counts[j]})", value=j in default_jobs, key=f"job_cb_{j}")
     ]
 selected = sorted(selected, key=all_jobs.index)
-harbor_view_base = st.sidebar.text_input(
-    "Harbor view base URL", value="http://127.0.0.1:8080",
-    help="Base URL of `harbor view jobs`. Used to link trials to their detail page.",
-).rstrip("/")
 if not selected:
     st.info("Pick at least one job in the sidebar.")
     st.stop()
-# Efficiency of a failed trial is noise; default to comparing passed trials only.
-passed_only = st.sidebar.checkbox("Efficiency metrics: passed trials only", value=True)
 
 mtimes = {p.name: p.stat().st_mtime for p in job_dirs}
 trials: list[dict] = []
@@ -547,6 +555,49 @@ for name in selected:
 
 if not trials:
     st.warning("Selected jobs have no trial results yet.")
+    st.stop()
+
+# --- Sidebar dimension filters --------------------------------------------
+# Narrow the loaded trials by dimension. Every value is selected by default;
+# unticking narrows (untick down to one to isolate it). Options are derived from
+# the trials in the currently selected jobs, so they track the job selection. A
+# dimension with a single value is skipped (nothing to filter on).
+def _agent_model(t: dict) -> str:
+    return f"{t.get('agent') or '?'} / {t.get('model') or '?'}"
+
+
+_filters: list[tuple] = []
+
+# Channel and agent+model are small fixed sets, so pills (toggle chips) read
+# better than a dropdown. Task can be long and high-cardinality, so it stays a
+# multiselect and sits last.
+_chan_opts = sorted({t.get("channel") or "?" for t in trials})
+if len(_chan_opts) > 1:
+    _chosen = st.sidebar.pills(
+        f"Channel ({len(_chan_opts)})", _chan_opts, selection_mode="multi",
+        default=_chan_opts, key="filt_channel",
+    )
+    _filters.append((lambda t: t.get("channel") or "?", set(_chosen)))
+
+_am_opts = sorted({_agent_model(t) for t in trials})
+if len(_am_opts) > 1:
+    _chosen = st.sidebar.pills(
+        f"Agent + model ({len(_am_opts)})", _am_opts, selection_mode="multi",
+        default=_am_opts, key="filt_am",
+    )
+    _filters.append((_agent_model, set(_chosen)))
+
+_task_opts = sorted({t.get("task") or "?" for t in trials})
+if len(_task_opts) > 1:
+    _chosen = st.sidebar.multiselect(
+        f"Task ({len(_task_opts)})", _task_opts, default=_task_opts, key="filt_task"
+    )
+    _filters.append((lambda t: t.get("task") or "?", set(_chosen)))
+
+trials = [t for t in trials if all(g(t) in chosen for g, chosen in _filters)]
+if not trials:
+    st.warning("No trials match the current filters. Loosen a filter in the sidebar "
+               "(an empty selection excludes everything).")
     st.stop()
 
 tab_grouped, tab_trials, tab_grid, tab_matrix = st.tabs(["Grouped", "Trials", "Token grid", "Matrix"])
