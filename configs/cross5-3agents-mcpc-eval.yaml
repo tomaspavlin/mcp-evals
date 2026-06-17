@@ -9,7 +9,7 @@ tasks:
   - path: tasks/github-pr-info
 agents:
   - name: claude-code
-    model_name: anthropic/claude-sonnet-4-6
+    model_name: anthropic/claude-sonnet-4.6@preset/anthropic-provider-only
   - name: codex
     model_name: openai/gpt-5.4
   - name: opencode

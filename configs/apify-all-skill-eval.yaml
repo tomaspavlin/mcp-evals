@@ -7,6 +7,6 @@ datasets:
     exclude_task_names: ["apify-mcp-connected"]
 agents:
   - name: claude-code
-    model_name: anthropic/claude-haiku-4.5
+    model_name: anthropic/claude-haiku-4.5@preset/anthropic-provider-only
   - name: opencode
     model_name: openrouter/deepseek/deepseek-v4-flash@preset/deepseek-provider-only

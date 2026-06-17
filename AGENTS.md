@@ -73,6 +73,7 @@ OpenRouter slugs prefixed with `openrouter/`. Always pin a provider via `@preset
 Current models:
 - `openrouter/deepseek/deepseek-v4-flash@preset/deepseek-provider-only` - cheap default (~$0.09 / $0.18 per Mtok)
 - `openrouter/deepseek/deepseek-v4-pro@preset/deepseek-provider-only` - heavier tier (~$0.435 / $0.87 per Mtok)
+- Anthropic via OpenRouter: use `@preset/anthropic-provider-only` (e.g. `openrouter/anthropic/claude-sonnet-4.6@preset/anthropic-provider-only`). Slugs use dots, not hyphens.
 
 Adding a new model: confirm the desired upstream provider serves it at `https://openrouter.ai/<provider>/<model>`, create the matching `@preset/<provider>-only` on OpenRouter, then reference it via the combined `model@preset/slug` syntax.
 

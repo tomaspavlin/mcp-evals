@@ -62,6 +62,8 @@ OpenRouter routes each request to whichever upstream provider it picks at that m
 { "only": ["deepseek"], "allow_fallbacks": false }
 ```
 
+Same shape for Anthropic models: [`@preset/anthropic-provider-only`](https://openrouter.ai/settings/presets) with `{ "only": ["anthropic"], "allow_fallbacks": false }`. Reference as `openrouter/anthropic/claude-sonnet-4.6@preset/anthropic-provider-only` (slugs use dots, not hyphens).
+
 Reference the preset in the model field using OpenRouter's combined syntax: `<provider>/<model>@preset/<preset-slug>`. All deepseek configs in `configs/` use this form. See `AGENTS.md` § Models for the current model list.
 
 The same problem applies to any provider whose cache we depend on - if you add a new family (Qwen, Llama, etc.) and care about caching, create a matching `@preset/<provider>-only` preset and reference it in the model name.

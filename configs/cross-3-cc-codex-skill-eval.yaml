@@ -10,8 +10,8 @@ tasks:
   - path: tasks/cross-search-actor-and-repo-licenses
 agents:
   - name: claude-code
-    model_name: anthropic/claude-sonnet-4-6
+    model_name: anthropic/claude-sonnet-4.6@preset/anthropic-provider-only
   - name: claude-code
-    model_name: anthropic/claude-opus-4-7
+    model_name: anthropic/claude-opus-4.7@preset/anthropic-provider-only
   - name: codex
     model_name: openai/gpt-5.4

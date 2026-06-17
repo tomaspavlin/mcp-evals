@@ -6,6 +6,6 @@ datasets:
     task_names: ["apify-*"]
 agents:
   - name: claude-code
-    model_name: anthropic/claude-haiku-4.5
+    model_name: anthropic/claude-haiku-4.5@preset/anthropic-provider-only
   - name: opencode
     model_name: openrouter/deepseek/deepseek-v4-flash@preset/deepseek-provider-only
