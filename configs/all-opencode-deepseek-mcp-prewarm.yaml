@@ -1,0 +1,13 @@
+# Pre-warm e2b template cache for every task in tasks/ on the cheapest model.
+# Run this once before launching parallel connector sweeps so all 4 sweeps
+# hit cached templates instead of racing the same alias. Connector choice
+# does not matter (all connectors share the same Dockerfile / dirhash /
+# template alias); mcp picked because every app cell supports it.
+job_name: all-opencode-deepseek-mcp-prewarm
+connector: mcp
+n_concurrent_trials: 16
+datasets:
+  - path: tasks
+agents:
+  - name: opencode
+    model_name: openrouter/deepseek/deepseek-v4-flash@preset/deepseek-provider-only

@@ -173,6 +173,9 @@ Flags: `-p/--port` (default 8501), `--host`, `--no-browser`. See
   old "don't run same-task configs in parallel" restriction is lifted. Two runs against
   the same task with different connectors can run concurrently; the materialized
   `environment/` is identical so the sandbox template cache is reused either way.
+- First-time e2b template builds for the same task can race and cross-cancel
+  (`BuildException` / `SandboxException 404`). Pre-warm with
+  `configs/all-opencode-deepseek-mcp-prewarm.yaml` before parallel sweeps.
 - E2B accepts heavy concurrency: a 17-trial sweep with `-n 17` ran with zero
   sandbox / quota / 429 errors. Set `-n` to whatever your dataset size / API rate
   limits allow; the sandbox layer is not the bottleneck.
