@@ -17,7 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 JOBS_DIR = Path(os.environ.get("MCP_EVALS_JOBS_DIR", REPO_ROOT / "jobs")).expanduser().resolve()
 # Fallback parse for jobs predating MCP_EVALS_CONNECTOR in verifier env.
 KNOWN_CONNECTORS = {"mcp", "cli", "skill", "mcpc"}
-GROUP_KEYS = ["trial", "job", "apps", "connector", "app", "task", "agent", "model"]
+GROUP_KEYS = ["trial", "job", "apps", "connector", "task", "agent", "model"]
 
 # Shared trajectory-metric logic (stdlib-only). Loaded by file path because the
 # dashboard venv has streamlit+harbor but not the mcp_evals package, and
@@ -383,7 +383,6 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
         connector_str = connector_values[0] if len(connector_values) == 1 else (
             "hybrid" if connector_values else "?"
         )
-        primary_app = app_keys[0] if len(app_keys) == 1 else None
         trial_dir = JOBS_DIR / job_name / trial_name
         details = read_json(trial_dir / "verifier" / "reward-details.json")
         passed = metrics_mod.tests_passed(details)
@@ -407,7 +406,6 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
             "trial": trial_name,
             "apps": apps_str,
             "connector": connector_str,
-            "app": primary_app,
             "connectors_by_app": connectors_by_app,
             "task": tr.task_name,
             "agent": tr.agent_info.name if tr.agent_info else None,
@@ -501,10 +499,12 @@ def aggregate(trials: list[dict], by: list[str]) -> list[dict]:
             "cache_tokens": g["n_cache"],
             "uncached_input_tokens": max(0, g["n_input"] - g["n_cache"]),
             "output_tokens": g["n_output"],
+            "total_tokens": g["n_input"] + g["n_output"],
             "avg_input_tokens": g["n_input"] / total,
             "avg_cache_tokens": g["n_cache"] / total,
             "avg_uncached_input_tokens": max(0, g["n_input"] - g["n_cache"]) / total,
             "avg_output_tokens": g["n_output"] / total,
+            "avg_total_tokens": (g["n_input"] + g["n_output"]) / total,
             "cache_hit_rate": g["n_cache"] / g["n_input"] if g["n_input"] else None,
             "env_setup_s": g["t_env_setup"],
             "agent_setup_s": g["t_agent_setup"],
@@ -564,6 +564,13 @@ errored_filter = st.sidebar.segmented_control(
     "Errored", ["All", "Errored", "Not errored"], default="All", key="errored_filter",
 )
 st.sidebar.caption("Jobs")
+_b_all, _b_none = st.sidebar.columns(2)
+if _b_all.button("All", key="jobs_all", use_container_width=True):
+    for _j in all_jobs:
+        st.session_state[f"job_cb_{_j}"] = True
+if _b_none.button("None", key="jobs_none", use_container_width=True):
+    for _j in all_jobs:
+        st.session_state[f"job_cb_{_j}"] = False
 with st.sidebar.container(height=240):
     selected = [
         j for j in all_jobs
@@ -654,7 +661,7 @@ with tab_grouped:
             "group", "total", "passed", "errored", "pass_rate", "avg_reward",
             "avg_agent_turns", "avg_connector_calls", "avg_off_connector_calls",
             "avg_errored_calls", "avg_connector_output_chars", "avg_prompt_baseline_tokens",
-            "avg_cost_usd", "avg_uncached_input_tokens", "avg_cache_tokens", "cache_hit_rate", "avg_output_tokens",
+            "avg_cost_usd", "avg_total_tokens", "avg_uncached_input_tokens", "avg_cache_tokens", "cache_hit_rate", "avg_output_tokens",
             "avg_env_setup_s", "avg_agent_setup_s", "avg_agent_exec_s", "avg_verifier_s",
             "cost_usd",
         ]
@@ -1167,6 +1174,7 @@ MATRIX_METRICS: dict[str, tuple[str, bool | None, tuple[float, float] | None, st
     "avg_connector_calls": ("Avg connector calls", None, None, ".1f"),
     "avg_off_connector_calls": ("Avg off-connector calls", False, None, ".2f"),
     "avg_errored_calls": ("Avg errored calls", False, None, ".2f"),
+    "avg_total_tokens": ("Avg tokens", False, None, ",.0f"),
     "avg_prompt_baseline_tokens": ("Avg baseline prompt tokens", False, None, ",.0f"),
     "avg_output_tokens": ("Avg output tokens", False, None, ",.0f"),
     "avg_cache_tokens": ("Avg cached tokens", None, None, ",.0f"),
