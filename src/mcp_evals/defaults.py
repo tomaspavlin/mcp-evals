@@ -7,4 +7,4 @@ DEFAULT_ENVIRONMENT = {
     "override_storage_mb": 10240,
 }
 DEFAULT_N_CONCURRENT_TRIALS = 5
-DEFAULT_AGENT_KWARGS = {"max_budget_usd": 1.50, "max_turns": 20}
+DEFAULT_AGENT_KWARGS = {"max_budget_usd": 1.50, "max_turns": 35}
