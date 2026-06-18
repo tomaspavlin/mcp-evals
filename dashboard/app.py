@@ -51,6 +51,22 @@ def read_json(path: Path) -> dict | None:
         return None
 
 
+def job_mtime(job_dir: Path) -> float:
+    # Cache-invalidation signature for a job. The job dir's own mtime only tracks
+    # when trial *subdirs* are created (all up front), not when each trial's
+    # result.json lands inside an already-existing subdir. A slow trial (e.g. a
+    # 300s timeout) finishes long after the dir was made, so keying caches on the
+    # job dir mtime alone leaves that trial invisible until a full restart. Taking
+    # the max over the immediate children picks up each completion (a trial's
+    # subdir mtime bumps when result.json is written into it).
+    try:
+        mtimes = [job_dir.stat().st_mtime]
+        mtimes += [c.stat().st_mtime for c in job_dir.iterdir()]
+        return max(mtimes)
+    except OSError:
+        return 0.0
+
+
 def _fallback_connector(job_name: str) -> str:
     # Used only when the trial's verifier env lacks MCP_EVALS_CONNECTOR.
     # Naming convention (AGENTS.md): <dataset>-<harness>-<model>-<connector>-<purpose>.
@@ -506,7 +522,7 @@ def aggregate(trials: list[dict], by: list[str]) -> list[dict]:
 job_dirs = (
     sorted(
         (p for p in JOBS_DIR.iterdir() if p.is_dir()),
-        key=lambda p: p.stat().st_mtime,
+        key=job_mtime,
         reverse=True,
     )
     if JOBS_DIR.exists()
@@ -523,7 +539,7 @@ def _job_trial_count(job_name: str, mtime: float) -> int:
     return len(JobScanner(JOBS_DIR).list_trials(job_name))
 
 
-job_mtimes = {d.name: d.stat().st_mtime for d in job_dirs}
+job_mtimes = {d.name: job_mtime(d) for d in job_dirs}
 trial_counts = {j: _job_trial_count(j, job_mtimes[j]) for j in all_jobs}
 default_jobs = set(all_jobs[:5])
 
@@ -538,16 +554,14 @@ harbor_view_base = st.sidebar.text_input(
 # Jobs is the first filter: it gates which trials get loaded; the dimension
 # filters below (connector / agent+model / task) then narrow what was loaded.
 st.sidebar.markdown("**Filters**")
-# Efficiency of a failed trial is noise; default to comparing passed trials only.
-# Applied globally so every tab sees the same set.
-passed_only = st.sidebar.checkbox("Passed trials only", value=False)
+# Efficiency of a failed trial is noise, so 'Passed' is the usual comparison set;
+# 'Not passed' isolates failures. Applied globally so every tab sees the same set.
+pass_filter = st.sidebar.segmented_control(
+    "Trials", ["All", "Passed", "Not passed"], default="All", key="pass_filter",
+)
 # Errored trials have an exception; their metrics are usually unreliable noise.
-# Disabled when passed_only is on (it already excludes errored).
-hide_errored = st.sidebar.checkbox(
-    "Hide errored trials",
-    value=False,
-    disabled=passed_only,
-    help="Already implied by 'Passed trials only'." if passed_only else None,
+errored_filter = st.sidebar.segmented_control(
+    "Errored", ["All", "Errored", "Not errored"], default="All", key="errored_filter",
 )
 st.sidebar.caption("Jobs")
 with st.sidebar.container(height=240):
@@ -560,7 +574,7 @@ if not selected:
     st.info("Pick at least one job in the sidebar.")
     st.stop()
 
-mtimes = {p.name: p.stat().st_mtime for p in job_dirs}
+mtimes = {p.name: job_mtime(p) for p in job_dirs}
 trials: list[dict] = []
 for name in selected:
     trials.extend(load_trial_rows(name, mtimes.get(name, 0.0)))
@@ -608,14 +622,18 @@ if len(_task_opts) > 1:
     _filters.append((lambda t: t.get("task") or "?", set(_chosen)))
 
 trials = [t for t in trials if all(g(t) in chosen for g, chosen in _filters)]
-if passed_only:
+if pass_filter == "Passed":
     trials = [t for t in trials if t["tests_passed"]]
-elif hide_errored:
+elif pass_filter == "Not passed":
+    trials = [t for t in trials if not t["tests_passed"]]
+if errored_filter == "Errored":
+    trials = [t for t in trials if t["errored"]]
+elif errored_filter == "Not errored":
     trials = [t for t in trials if not t["errored"]]
 if not trials:
     st.warning("No trials match the current filters. Loosen a filter in the sidebar "
-               "(an empty selection excludes everything; 'Passed trials only' hides "
-               "failed and errored trials).")
+               "(an empty selection excludes everything; the 'Trials' / 'Errored' "
+               "toggles narrow to passed/failed/errored subsets).")
     st.stop()
 
 tab_grouped, tab_trials, tab_grid, tab_matrix = st.tabs(["Grouped", "Trials", "Token grid", "Matrix"])
@@ -647,7 +665,7 @@ with tab_grouped:
 
         # Pass rate and avg reward are trivial (1.0) once we restrict to passed
         # trials, so hide them when the filter is on.
-        if not passed_only:
+        if pass_filter != "Passed":
             st.subheader("Pass rate")
             # All verifier criteria true and no trial exception. Health gate, not
             # an optimization target: anything under 1.0 deserves a look at the
@@ -1162,11 +1180,11 @@ with tab_matrix:
     c1, c2, c3 = st.columns(3)
     with c1:
         row_dims = st.multiselect(
-            "Rows", matrix_dim_options, default=["agent", "model"], key="mx_rows",
+            "Rows", matrix_dim_options, default=["task"], key="mx_rows",
         )
     with c2:
         col_dims = st.multiselect(
-            "Columns", matrix_dim_options, default=["connector"], key="mx_cols",
+            "Columns", matrix_dim_options, default=["agent", "model", "connector"], key="mx_cols",
         )
     with c3:
         metric = st.selectbox(
