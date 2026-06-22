@@ -9,6 +9,7 @@ per-app overrides via `RunConfig.app_connectors`.
 from __future__ import annotations
 
 import tomllib
+from fnmatch import fnmatch
 from pathlib import Path
 
 from mcp_evals.config import RunConfig
@@ -27,8 +28,17 @@ def read_task_apps(task_path: Path) -> list[str]:
 def run_task_paths(run: RunConfig) -> list[Path]:
     paths = [tc.path for tc in run.tasks if tc.path is not None]
     for ds in run.datasets:
-        if ds.path is not None:
-            paths.extend(discover_dataset_task_paths(ds.path))
+        if ds.path is None:
+            continue
+        for p in discover_dataset_task_paths(ds.path):
+            name = p.name
+            if ds.task_names and not any(fnmatch(name, pat) for pat in ds.task_names):
+                continue
+            if ds.exclude_task_names and any(
+                fnmatch(name, pat) for pat in ds.exclude_task_names
+            ):
+                continue
+            paths.append(p)
     return paths
 
 

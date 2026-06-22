@@ -2,11 +2,13 @@
 resolution (relative to cell.yaml, glob expansion, validation)."""
 
 import pytest
+from harbor.models.job.config import DatasetConfig
 from typer.testing import CliRunner
 
 from mcp_evals.cli.main import app
 from mcp_evals.config import RunConfig
 from mcp_evals.apps.loader import load_app_cell
+from mcp_evals.apps.resolver import resolve_apps
 
 
 def _write_cell(root, app, connector, yaml_body):
@@ -127,3 +129,36 @@ class TestCliFlagOverridesConfig:
         assert result.exit_code != 0
         assert isinstance(result.exception, FileNotFoundError)
         assert str(flag_root) in str(result.exception)
+
+
+def _write_task(root, name, apps):
+    d = root / name
+    d.mkdir(parents=True)
+    body = '[mcp_evals]\napps = [' + ", ".join(f'"{a}"' for a in apps) + ']\n'
+    (d / "task.toml").write_text(body)
+    return d
+
+
+class TestResolveAppsDatasetFilter:
+    """resolve_apps must honor dataset.task_names / exclude_task_names so a
+    config that scopes to `apify-*` doesn't pull in github cells."""
+
+    def test_task_names_glob_filters_apps(self, tmp_path):
+        ds_root = tmp_path / "tasks"
+        _write_task(ds_root, "apify-foo", ["apify"])
+        _write_task(ds_root, "github-bar", ["github"])
+
+        run = RunConfig(
+            datasets=[DatasetConfig(path=ds_root, task_names=["apify-*"])],
+        )
+        assert resolve_apps(run) == ["apify"]
+
+    def test_exclude_task_names_glob_drops_apps(self, tmp_path):
+        ds_root = tmp_path / "tasks"
+        _write_task(ds_root, "apify-foo", ["apify"])
+        _write_task(ds_root, "github-bar", ["github"])
+
+        run = RunConfig(
+            datasets=[DatasetConfig(path=ds_root, exclude_task_names=["github-*"])],
+        )
+        assert resolve_apps(run) == ["apify"]
