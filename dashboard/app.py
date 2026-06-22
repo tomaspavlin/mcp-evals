@@ -431,6 +431,7 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
             "t_agent_setup": _secs(tr.agent_setup),
             "t_agent_exec": _secs(tr.agent_execution),
             "t_verifier": _secs(tr.verifier),
+            "subagent_tokens": metrics_mod.sum_subagent_tokens(trial_dir),
             **trial_metrics,
         })
     return out
@@ -443,6 +444,7 @@ def aggregate(trials: list[dict], by: list[str]) -> list[dict]:
         "t_env_setup": 0.0, "t_agent_setup": 0.0, "t_agent_exec": 0.0, "t_verifier": 0.0,
         "agent_turns": 0, "connector_calls": 0, "off_connector_calls": 0,
         "errored_calls": 0, "connector_output_chars": 0,
+        "subagent_tokens": 0,
         "baseline_sum": 0, "baseline_n": 0,
         "reward_sum": 0.0, "reward_n": 0,
     })
@@ -467,6 +469,7 @@ def aggregate(trials: list[dict], by: list[str]) -> list[dict]:
         g["off_connector_calls"] += t["off_connector_calls"]
         g["errored_calls"] += t["errored_calls"]
         g["connector_output_chars"] += t["connector_output_chars"]
+        g["subagent_tokens"] += t["subagent_tokens"]
         if t["prompt_baseline_tokens"]:
             g["baseline_sum"] += t["prompt_baseline_tokens"]
             g["baseline_n"] += 1
@@ -489,6 +492,7 @@ def aggregate(trials: list[dict], by: list[str]) -> list[dict]:
             "avg_off_connector_calls": g["off_connector_calls"] / total,
             "avg_errored_calls": g["errored_calls"] / total,
             "avg_connector_output_chars": g["connector_output_chars"] / total,
+            "avg_subagent_tokens": g["subagent_tokens"] / total,
             # ~tokens at 4 chars/token; codex trials lack per-step metrics (None baseline)
             "avg_prompt_baseline_tokens": (
                 g["baseline_sum"] / g["baseline_n"] if g["baseline_n"] else None
@@ -505,6 +509,9 @@ def aggregate(trials: list[dict], by: list[str]) -> list[dict]:
             "avg_uncached_input_tokens": max(0, g["n_input"] - g["n_cache"]) / total,
             "avg_output_tokens": g["n_output"] / total,
             "avg_total_tokens": (g["n_input"] + g["n_output"]) / total,
+            # Parent trajectory + claude-code subagent transcripts; equals
+            # avg_total_tokens for codex/opencode (no subagents).
+            "avg_total_tokens_inc_subagents": (g["n_input"] + g["n_output"] + g["subagent_tokens"]) / total,
             "cache_hit_rate": g["n_cache"] / g["n_input"] if g["n_input"] else None,
             "env_setup_s": g["t_env_setup"],
             "agent_setup_s": g["t_agent_setup"],
@@ -661,7 +668,7 @@ with tab_grouped:
             "group", "total", "passed", "errored", "pass_rate", "avg_reward",
             "avg_agent_turns", "avg_connector_calls", "avg_off_connector_calls",
             "avg_errored_calls", "avg_connector_output_chars", "avg_prompt_baseline_tokens",
-            "avg_cost_usd", "avg_total_tokens", "avg_uncached_input_tokens", "avg_cache_tokens", "cache_hit_rate", "avg_output_tokens",
+            "avg_cost_usd", "avg_total_tokens", "avg_total_tokens_inc_subagents", "avg_subagent_tokens", "avg_uncached_input_tokens", "avg_cache_tokens", "cache_hit_rate", "avg_output_tokens",
             "avg_env_setup_s", "avg_agent_setup_s", "avg_agent_exec_s", "avg_verifier_s",
             "cost_usd",
         ]
@@ -827,6 +834,9 @@ def _trial_row(t: dict) -> dict:
         "cache_tokens": t["n_cache"],
         "cache_hit_rate": (t["n_cache"] / t["n_input"]) if t["n_input"] else None,
         "output_tokens": t["n_output"],
+        "total_tokens": t["n_input"] + t["n_output"],
+        "subagent_tokens": t["subagent_tokens"],
+        "total_tokens_inc_subagents": t["n_input"] + t["n_output"] + t["subagent_tokens"],
         "cost_usd": t["cost_usd"],
         "agent_exec_s": t["t_agent_exec"],
     }
@@ -1175,6 +1185,8 @@ MATRIX_METRICS: dict[str, tuple[str, bool | None, tuple[float, float] | None, st
     "avg_off_connector_calls": ("Avg off-connector calls", False, None, ".2f"),
     "avg_errored_calls": ("Avg errored calls", False, None, ".2f"),
     "avg_total_tokens": ("Avg tokens", False, None, ",.0f"),
+    "avg_total_tokens_inc_subagents": ("Avg tokens (+subagents)", False, None, ",.0f"),
+    "avg_subagent_tokens": ("Avg subagent tokens", None, None, ",.0f"),
     "avg_prompt_baseline_tokens": ("Avg baseline prompt tokens", False, None, ",.0f"),
     "avg_output_tokens": ("Avg output tokens", False, None, ",.0f"),
     "avg_cache_tokens": ("Avg cached tokens", None, None, ",.0f"),

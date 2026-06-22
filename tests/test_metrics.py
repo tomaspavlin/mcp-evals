@@ -5,12 +5,15 @@ harness output: claude-code (`Bash`, `mcp__apify__*`), opencode (`bash`,
 `apify_*`), codex (`exec_command` with `cmd`, prefix-stripped MCP names).
 """
 
+import json
+
 from mcp_evals.metrics import (
     call_errored,
     classify_call,
     compute_trial_metrics,
     app_for_task,
     failed_criteria,
+    sum_subagent_tokens,
 )
 from mcp_evals.metrics import tests_passed as check_tests_passed
 
@@ -177,6 +180,44 @@ class TestRewardDetails:
 
     def test_failed_criteria(self):
         assert failed_criteria(self.DETAILS) == ["actor_id_matches"]
+
+
+class TestSumSubagentTokens:
+    def _write_subagent(self, path, turns):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as fh:
+            for u in turns:
+                fh.write(json.dumps({"type": "assistant", "message": {"usage": u}}) + "\n")
+            # noise records that must be ignored
+            fh.write(json.dumps({"type": "user", "message": {"role": "user", "content": "hi"}}) + "\n")
+
+    def test_sums_across_subagent_files(self, tmp_path):
+        sub = tmp_path / "agent" / "sessions" / "projects" / "-app" / "sess" / "subagents"
+        self._write_subagent(sub / "agent-a.jsonl", [
+            {"input_tokens": 3, "cache_creation_input_tokens": 100, "cache_read_input_tokens": 1000, "output_tokens": 50},
+            {"input_tokens": 1, "output_tokens": 5},
+        ])
+        self._write_subagent(sub / "agent-b.jsonl", [
+            {"input_tokens": 2, "cache_read_input_tokens": 200, "output_tokens": 20},
+        ])
+        # 3+100+1000+50 + 1+5 + 2+200+20 == 1381
+        assert sum_subagent_tokens(tmp_path) == 1381
+
+    def test_returns_zero_without_sessions_dir(self, tmp_path):
+        assert sum_subagent_tokens(tmp_path) == 0
+
+    def test_returns_zero_without_subagents(self, tmp_path):
+        (tmp_path / "agent" / "sessions").mkdir(parents=True)
+        assert sum_subagent_tokens(tmp_path) == 0
+
+    def test_skips_malformed_lines(self, tmp_path):
+        sub = tmp_path / "agent" / "sessions" / "projects" / "-app" / "sess" / "subagents"
+        sub.mkdir(parents=True)
+        path = sub / "agent-x.jsonl"
+        with open(path, "w") as fh:
+            fh.write("not json\n")
+            fh.write(json.dumps({"type": "assistant", "message": {"usage": {"input_tokens": 7, "output_tokens": 3}}}) + "\n")
+        assert sum_subagent_tokens(tmp_path) == 10
 
 
 def test_app_for_task():

@@ -17,6 +17,7 @@ Harness naming differences this module absorbs:
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 # Per-app matcher registry. Hardcoded here rather than declared in
@@ -353,6 +354,40 @@ def tests_passed(reward_details: dict | None) -> bool | None:
     if not criteria:
         return None
     return all(c.get("raw") is True or c.get("value") == 1.0 for c in criteria)
+
+
+def sum_subagent_tokens(trial_dir: str | Path) -> int:
+    """Sum tokens across all claude-code subagent transcripts in a trial.
+
+    Walks `agent/sessions/projects/*/<sessionId>/subagents/agent-*.jsonl` and
+    sums `input + cache_creation + cache_read + output` over every assistant
+    record's `message.usage`. Returns 0 when no subagents dir exists (codex,
+    opencode, and claude-code trials that didn't spawn subagents).
+    """
+    sessions = Path(trial_dir) / "agent" / "sessions"
+    if not sessions.is_dir():
+        return 0
+    total = 0
+    for jsonl in sessions.rglob("subagents/agent-*.jsonl"):
+        try:
+            with open(jsonl) as fh:
+                for line in fh:
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if rec.get("type") != "assistant":
+                        continue
+                    usage = (rec.get("message") or {}).get("usage") or {}
+                    total += (
+                        (usage.get("input_tokens") or 0)
+                        + (usage.get("cache_creation_input_tokens") or 0)
+                        + (usage.get("cache_read_input_tokens") or 0)
+                        + (usage.get("output_tokens") or 0)
+                    )
+        except OSError:
+            continue
+    return total
 
 
 def failed_criteria(reward_details: dict | None) -> list[str]:
