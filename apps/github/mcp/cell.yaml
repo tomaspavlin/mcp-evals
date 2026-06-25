@@ -3,5 +3,6 @@ mcp_servers:
     transport: stdio
     command: /usr/local/bin/github-mcp-proxy
     args: []
-environment_env:
+# See apps/apify/mcp/cell.yaml.
+setup_env:
   GITHUB_TOKEN: ${GITHUB_TOKEN}

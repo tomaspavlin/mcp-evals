@@ -1,2 +1,5 @@
-environment_env:
+# Token is set only during setup.sh (`gh auth login --with-token` persists to
+# ~/.config/gh/hosts.yml); kept out of the container env so the agent can't
+# `echo $GITHUB_TOKEN` it into the trajectory. Matches apps/apify/cli/cell.yaml.
+setup_env:
   GITHUB_TOKEN: ${GITHUB_TOKEN}

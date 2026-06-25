@@ -3,5 +3,8 @@ mcp_servers:
     transport: stdio
     command: /usr/local/bin/apify-mcp-proxy
     args: []
-environment_env:
+# Token is set only during setup.sh, which stashes it to /etc/apify-mcp.token
+# for the proxy to read; kept out of the container env so the agent can't
+# `echo $APIFY_TOKEN` it into the trajectory. Matches apps/apify/cli/cell.yaml.
+setup_env:
   APIFY_TOKEN: ${APIFY_TOKEN}
