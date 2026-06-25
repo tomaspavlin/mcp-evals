@@ -16,7 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # Set by `mcp-evals dashboard` so external projects can point at their own jobs dir.
 JOBS_DIR = Path(os.environ.get("MCP_EVALS_JOBS_DIR", REPO_ROOT / "jobs")).expanduser().resolve()
 # Fallback parse for jobs predating MCP_EVALS_CONNECTOR in verifier env.
-KNOWN_CONNECTORS = {"mcp", "cli", "skill", "mcpc"}
+KNOWN_CONNECTORS = {"mcp", "cli", "skill", "cli+skill", "mcpc"}
 GROUP_KEYS = ["trial", "job", "apps", "connector", "task", "agent", "model"]
 
 # Shared trajectory-metric logic (stdlib-only). Loaded by file path because the
@@ -67,12 +67,19 @@ def job_mtime(job_dir: Path) -> float:
         return 0.0
 
 
+def _normalize_connector(c: str | None) -> str | None:
+    # Old jobs wrote `skill` to verifier env / job names; canonical is `cli+skill`.
+    if c == "skill":
+        return "cli+skill"
+    return c
+
+
 def _fallback_connector(job_name: str) -> str:
     # Used only when the trial's verifier env lacks MCP_EVALS_CONNECTOR.
     # Naming convention (AGENTS.md): <dataset>-<harness>-<model>-<connector>-<purpose>.
     for tok in job_name.split("-"):
         if tok in KNOWN_CONNECTORS:
-            return tok
+            return _normalize_connector(tok) or tok
     return "?"
 
 
@@ -464,6 +471,8 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
             fallback_app = metrics_mod.app_for_task(tr.task_name or "")
             if fallback_app and legacy_connector and legacy_connector != "?":
                 connectors_by_app = {fallback_app: legacy_connector}
+        # Normalize legacy `skill` -> canonical `cli+skill` for display/grouping.
+        connectors_by_app = {a: (_normalize_connector(c) or c) for a, c in connectors_by_app.items()}
         app_keys = sorted(connectors_by_app)
         apps_str = ",".join(app_keys) or "?"
         connector_values = sorted(set(connectors_by_app.values()))

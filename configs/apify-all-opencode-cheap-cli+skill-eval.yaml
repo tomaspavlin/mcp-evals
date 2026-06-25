@@ -1,5 +1,5 @@
-job_name: apify-all-opencode-cheap-skill-eval
-connector: skill
+job_name: apify-all-opencode-cheap-cli+skill-eval
+connector: cli+skill
 n_concurrent_trials: 2
 n_attempts: 2
 datasets:

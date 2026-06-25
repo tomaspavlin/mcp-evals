@@ -21,7 +21,7 @@ Third-party services we evaluate (project term: **app**):
 - Linear
 - Notion
 
-Each app has cells for the different **connectors** the agent can reach it through (mcp, cli, mcpc, skill). Multi-app tasks are supported: one task can use apify + github at the same time. Start with **read-only tool calls** for simplicity. Test production / staging remote MCPs directly - no need to run them locally.
+Each app has cells for the different **connectors** the agent can reach it through (mcp, cli, mcpc, cli+skill). Multi-app tasks are supported: one task can use apify + github at the same time. Start with **read-only tool calls** for simplicity. Test production / staging remote MCPs directly - no need to run them locally.
 
 ## Metrics
 
@@ -52,13 +52,13 @@ uv run mcp-evals run --connector mcp -a oracle \
 uv run mcp-evals run --connector mcp --app apify --app github -a oracle -t tasks/cross-actor-meta-and-repo-meta -y
 ```
 
-Flags: `--connector {mcp,cli,mcpc,skill}`, `--app NAME` (repeatable, optional), `--apps-dir PATH` (default `./apps`), `-a/--agent NAME`, `-m/--model MODEL` (omit for oracle), `-t/--task PATH` (repeatable), `-p/--dataset-path PATH`, `--task-name GLOB` (repeatable), `--exclude-task-name GLOB` (repeatable), `--job-name`, `-o/--jobs-dir PATH` (default `./jobs`), `-k/--n-attempts`, `-n/--n-concurrent`, `--env {docker,daytona,e2b,...}` (sandbox backend, default e2b), `--env-file`, `-y`. Each flag overrides whatever's in `-c`. Eval definitions can live in an external repo: see "Usage" in `README.md` (covers `--apps-dir`, `-o/--jobs-dir`, and yaml-relative `skills:` globs).
+Flags: `--connector {mcp,cli,mcpc,cli+skill}`, `--app NAME` (repeatable, optional), `--apps-dir PATH` (default `./apps`), `-a/--agent NAME`, `-m/--model MODEL` (omit for oracle), `-t/--task PATH` (repeatable), `-p/--dataset-path PATH`, `--task-name GLOB` (repeatable), `--exclude-task-name GLOB` (repeatable), `--job-name`, `-o/--jobs-dir PATH` (default `./jobs`), `-k/--n-attempts`, `-n/--n-concurrent`, `--env {docker,daytona,e2b,...}` (sandbox backend, default e2b), `--env-file`, `-y`. Each flag overrides whatever's in `-c`. Eval definitions can live in an external repo: see "Usage" in `README.md` (covers `--apps-dir`, `-o/--jobs-dir`, and yaml-relative `skills:` globs).
 
 ## Configs
 
-Schema (our `RunConfig`, ~8 lines): `job_name`, `connector` (mcp|cli|mcpc|skill), optional `apps` (auto-resolved from each task's `[mcp_evals].apps` when omitted), optional `app_connectors` for hybrid runs, `tasks` / `datasets`, `agents` (just `name` + `model_name` + optional `kwargs`), optional `apps_dir` / `jobs_dir` for eval definitions living outside this repo. Everything else - environment, mcp_servers, skills, instruction append, verifier env, default agent kwargs, concurrency - comes from the loaded app cells + `src/mcp_evals/defaults.py`. See `configs/apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml` for the canonical example.
+Schema (our `RunConfig`, ~8 lines): `job_name`, `connector` (mcp|cli|mcpc|cli+skill), optional `apps` (auto-resolved from each task's `[mcp_evals].apps` when omitted), optional `app_connectors` for hybrid runs, `tasks` / `datasets`, `agents` (just `name` + `model_name` + optional `kwargs`), optional `apps_dir` / `jobs_dir` for eval definitions living outside this repo. Everything else - environment, mcp_servers, skills, instruction append, verifier env, default agent kwargs, concurrency - comes from the loaded app cells + `src/mcp_evals/defaults.py`. See `configs/apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml` for the canonical example.
 
-Naming: `<dataset>-<harness>-<model>-<connector>-<purpose>.yaml`; `<connector>` is `mcp`, `cli`, `skill`, or `mcpc` (shell-driven MCP via [`@apify/mcpc`](https://github.com/apify/mcpc)); `<purpose>` is `eval`. Keep secrets in `.env`, never in yaml.
+Naming: `<dataset>-<harness>-<model>-<connector>-<purpose>.yaml`; `<connector>` is `mcp`, `cli`, `cli+skill`, or `mcpc` (shell-driven MCP via [`@apify/mcpc`](https://github.com/apify/mcpc)); legacy alias `skill` is accepted on read for historical jobs; `<purpose>` is `eval`. Keep secrets in `.env`, never in yaml.
 
 If a run fails with `FileExistsError` (job dir already exists), remove `jobs/<job-name>/` and rerun.
 
@@ -82,10 +82,10 @@ Adding a new model: confirm the desired upstream provider serves it at `https://
 ## Apps and connectors
 
 Tool access is split into two axes:
-- **connector** = how the agent reaches a app: `mcp`, `cli`, `mcpc`, `skill`. Picked per run.
+- **connector** = how the agent reaches a app: `mcp`, `cli`, `mcpc`, `cli+skill`. Picked per run.
 - **app** = which third-party service: `apify`, `github`, `linear`, `notion`. Picked per task.
 
-Each (app, connector) lives at `apps/<app>/<connector>/`: `cell.yaml` (mcp_servers / env / setup_env / teardown_env) + sibling `instruction.md` + optional `setup.sh` + optional `teardown.sh` + optional `skills/<skill-name>/SKILL.md`. All auto-discovered by the loader. `setup.sh` runs in the sandbox after env start and before the agent, with `setup_env` resolved in scope - use it for pre-auth (e.g. `apify login --token "$APIFY_TOKEN"`) so CLI/skill cells match the implicit auth MCP gets. `teardown.sh` runs after the agent and before artifact collection. Setup failure aborts the trial; teardown failure is logged and swallowed. Neither setup nor teardown env leaks into the agent's persistent env. To add a new app, drop a new directory under `apps/`.
+Each (app, connector) lives at `apps/<app>/<connector>/`: `cell.yaml` (mcp_servers / env / setup_env / teardown_env) + sibling `instruction.md` + optional `setup.sh` + optional `teardown.sh` + optional `skills/<skill-name>/SKILL.md`. All auto-discovered by the loader. `setup.sh` runs in the sandbox after env start and before the agent, with `setup_env` resolved in scope - use it for pre-auth (e.g. `apify login --token "$APIFY_TOKEN"`) so cli / cli+skill cells match the implicit auth MCP gets. `teardown.sh` runs after the agent and before artifact collection. Setup failure aborts the trial; teardown failure is logged and swallowed. Neither setup nor teardown env leaks into the agent's persistent env. To add a new app, drop a new directory under `apps/`.
 
 Each task declares which apps it needs via `[mcp_evals].apps = [...]` in `task.toml`. A run picks one `connector:` (applied to every app by default) or per-app overrides via `app_connectors:`. The verifier sees the resulting per-app connector map via `MCP_EVALS_CONNECTORS_JSON` (+ `MCP_EVALS_CONNECTOR` shorthand when all apps share a connector).
 

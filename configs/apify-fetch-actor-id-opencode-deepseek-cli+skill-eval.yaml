@@ -1,5 +1,5 @@
-job_name: apify-fetch-actor-id-opencode-deepseek-skill-eval
-connector: skill
+job_name: apify-fetch-actor-id-opencode-deepseek-cli+skill-eval
+connector: cli+skill
 tasks:
   - path: tasks/apify-fetch-actor-id
 agents:

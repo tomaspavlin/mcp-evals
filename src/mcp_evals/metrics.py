@@ -151,9 +151,9 @@ def matches_connector(tc: dict, app: str, connector: str) -> bool:
     """True if the tool call interacts with `app` through `connector`."""
     if app not in APPS:
         return False
-    # The `skill` connector is conceptually "CLI usage + extra prompt", so a
-    # skill cell's calls land on the shell. Match like cli.
-    if connector == "skill":
+    # `cli+skill` is "CLI usage + extra prompt"; calls land on the shell, so
+    # match like cli. `skill` is the legacy alias kept for old jobs.
+    if connector in ("cli+skill", "skill"):
         connector = "cli"
     spec = APPS[app]
     name = _name(tc)

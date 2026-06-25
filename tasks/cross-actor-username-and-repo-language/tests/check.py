@@ -15,7 +15,7 @@ _default_connector = os.environ.get("MCP_EVALS_CONNECTOR") or None
 
 def _resolve(app: str) -> str | None:
     ch = _connectors.get(app) or _default_connector
-    return "cli" if ch == "skill" else ch
+    return "cli" if ch in ("skill", "cli+skill") else ch
 
 
 CONNECTORS = {"apify": _resolve("apify"), "github": _resolve("github")}

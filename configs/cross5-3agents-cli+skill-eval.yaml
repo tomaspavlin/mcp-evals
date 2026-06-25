@@ -1,5 +1,5 @@
-job_name: cross5-3agents-skill-eval
-connector: skill
+job_name: cross5-3agents-cli+skill-eval
+connector: cli+skill
 n_concurrent_trials: 2
 # skill cell exists only for apify; github (and the cross tasks needing it) have no skill connector
 tasks:

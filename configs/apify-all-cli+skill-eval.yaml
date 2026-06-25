@@ -1,5 +1,5 @@
-job_name: apify-all-skill-eval
-connector: skill
+job_name: apify-all-cli+skill-eval
+connector: cli+skill
 n_concurrent_trials: 2
 datasets:
   - path: tasks

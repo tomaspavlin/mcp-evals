@@ -11,7 +11,7 @@ APP = "apify"
 _connectors = _json.loads(os.environ.get("MCP_EVALS_CONNECTORS_JSON") or "{}")
 EXPECTED_CONNECTOR = _connectors.get(APP) or os.environ.get("MCP_EVALS_CONNECTOR") or None
 # `skill` connector is CLI usage + extra prompt; match like cli.
-if EXPECTED_CONNECTOR == "skill":
+if EXPECTED_CONNECTOR in ("skill", "cli+skill"):
     EXPECTED_CONNECTOR = "cli"
 RESULT_PATH = "cli_rag.json"
 

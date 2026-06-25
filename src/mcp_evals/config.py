@@ -21,7 +21,8 @@ class RunConfig(BaseModel):
 
     Tool access is split into two axes:
     - `connector`: how the agent reaches the apps - `mcp`, `cli`, `mcpc`,
-      `skill`. One connector applies to every app by default.
+      `cli+skill` (legacy alias: `skill`). One connector applies to every app
+      by default.
     - `apps`: which third-party services the task uses (e.g. `apify`,
       `github`). Auto-populated from `[mcp_evals].apps` in each task's
       task.toml when not set on the run.

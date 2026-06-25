@@ -36,7 +36,7 @@ def run_command(
         str | None,
         Option(
             "--connector",
-            help="Access connector for apps: mcp, cli, mcpc, skill (overrides the value in the config).",
+            help="Access connector for apps: mcp, cli, mcpc, cli+skill (overrides the value in the config).",
             show_default=False,
         ),
     ] = None,

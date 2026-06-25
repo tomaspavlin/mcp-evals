@@ -1,7 +1,7 @@
 # Skill connector is apify-only; wire apify via skill + github via cli.
-job_name: cross-3-cc-codex-skill-eval
+job_name: cross-3-cc-codex-cli+skill-eval
 app_connectors:
-  apify: skill
+  apify: cli+skill
   github: cli
 n_concurrent_trials: 3
 tasks:

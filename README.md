@@ -11,7 +11,7 @@ How it works:
 
 1. Define an **app** (a third-party service: apify, github, ...) under
    `apps/<name>/<connector>/` for each access **connector** you want to
-   compare: `mcp`, `cli`, `mcpc`, `skill`. Each cell holds the MCP server
+   compare: `mcp`, `cli`, `mcpc`, `cli+skill`. Each cell holds the MCP server
    config, the CLI setup, or the skill the agent gets.
 2. Define tasks in `tasks/`: an instruction the agent should accomplish, plus
    a verifier. Each task declares which apps it needs via
@@ -31,7 +31,7 @@ at https://www.harborframework.com/docs/core-concepts. `mcp-evals` adds two
 project-specific axes on top:
 
 - **app** - third-party service the agent talks to (`apify`, `github`, `linear`, `notion`, ...).
-- **connector** - how the agent reaches it: `mcp`, `cli`, `mcpc`, or `skill`. One connector per run by default; `app_connectors:` for hybrid.
+- **connector** - how the agent reaches it: `mcp`, `cli`, `mcpc`, or `cli+skill`. One connector per run by default; `app_connectors:` for hybrid.
 - **cell** - one (app, connector) pair on disk: `apps/<app>/<connector>/{cell.yaml, instruction.md, [setup.sh], [teardown.sh], [skills/]}`.
 
 Deep reference (cell file layout, `cell.yaml` fields, MCP-proxy wrapper template,
