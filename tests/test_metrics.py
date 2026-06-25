@@ -52,6 +52,29 @@ class TestClassifyCall:
         assert classify_call(tc, "apify", "cli") == "escape"
         assert classify_call(tc, "apify", "mcp") == "escape"
 
+    def test_python_urllib_is_escape(self):
+        # Python heredocs that actually fetch must still count.
+        cmd = (
+            "python3 - <<'PY'\n"
+            "import os, urllib.request\n"
+            "url = f'https://api.apify.com/v2/acts/x?token={os.environ[\"APIFY_TOKEN\"]}'\n"
+            "print(urllib.request.urlopen(url).read())\n"
+            "PY"
+        )
+        assert classify_call(_call("exec_command", cmd=cmd), "apify", "mcp") == "escape"
+
+    def test_heredoc_with_embedded_api_url_is_not_escape(self):
+        # Local text parsing of prior tool output (which contained
+        # https://api.github.com/... links) must NOT count.
+        cmd = (
+            "python - <<'PY'\n"
+            "import json, textwrap\n"
+            "s = '''{\"items\":[{\"url\":\"https://api.github.com/users/foo\"}]}'''\n"
+            "print(textwrap.shorten(s, 50))\n"
+            "PY"
+        )
+        assert classify_call(_call("exec_command", cmd=cmd), "github", "mcp") == "other"
+
     def test_workspace_and_other(self):
         assert classify_call(_call("Write", file_path="/app/x.txt"), "apify", "mcp") == "workspace"
         assert classify_call(_call("read", filePath="/app/x.txt"), "apify", "cli") == "workspace"

@@ -17,6 +17,7 @@ Harness naming differences this module absorbs:
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -166,12 +167,30 @@ def matches_connector(tc: dict, app: str, connector: str) -> bool:
     return False
 
 
+# Markers that the command actually issues an HTTP request (rather than just
+# containing the api host string as embedded JSON / log text). Conservative
+# allowlist; if a real HTTP fetcher is missing here it'll be miscounted as a
+# non-escape - prefer that over false positives from heredoc-embedded URLs.
+_HTTP_TOOL_MARKERS = (
+    "curl", "wget", "httpie", "xh ",
+    "urlopen", "urlretrieve", "requests.", "httpx", "aiohttp", "fetch(",
+)
+
+
 def _is_api_escape(tc: dict, app: str) -> bool:
-    """Shell call hitting the app's HTTP API directly (curl etc.)."""
+    """Shell call hitting the app's HTTP API directly (curl, python+urllib, etc).
+
+    Requires BOTH an api-host substring AND a recognizable HTTP-issuing tool in
+    the command. The HTTP-tool gate filters out heredoc-pasted JSON that
+    incidentally contains api.<host>.com URLs (e.g. parsing prior MCP output
+    in a local python script).
+    """
     if _name(tc) not in SHELL_TOOLS:
         return False
     cmd = _command(tc)
-    return any(host in cmd for host in APPS[app]["api_hosts"])
+    if not any(host in cmd for host in APPS[app]["api_hosts"]):
+        return False
+    return any(m in cmd for m in _HTTP_TOOL_MARKERS)
 
 
 def classify_call(tc: dict, app: str | None, connector: str | None) -> str:
