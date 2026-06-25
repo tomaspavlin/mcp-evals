@@ -78,6 +78,10 @@ MCPC_PREFIXES = ("mcpc ",)
 CONNECTORS = ("mcp", "cli", "mcpc")
 
 SHELL_TOOLS = {"bash", "exec_command", "shell", "run_terminal_cmd", "local_shell"}
+# Harness-native HTTP fetchers that bypass the shell (opencode `webfetch`,
+# claude-code `WebFetch`). Their target lives in `arguments.url`, not in a
+# shell command, so `_is_api_escape` matches the URL directly.
+WEBFETCH_TOOLS = {"webfetch", "web_fetch"}
 WORKSPACE_TOOLS = {
     "write", "read", "edit", "multiedit", "notebookedit", "ls", "glob", "grep",
     "apply_patch", "patch", "todowrite", "todoread", "task", "view_image",
@@ -178,19 +182,26 @@ _HTTP_TOOL_MARKERS = (
 
 
 def _is_api_escape(tc: dict, app: str) -> bool:
-    """Shell call hitting the app's HTTP API directly (curl, python+urllib, etc).
+    """Tool call hitting the app's HTTP API directly.
 
-    Requires BOTH an api-host substring AND a recognizable HTTP-issuing tool in
-    the command. The HTTP-tool gate filters out heredoc-pasted JSON that
-    incidentally contains api.<host>.com URLs (e.g. parsing prior MCP output
-    in a local python script).
+    Two surfaces are recognized:
+    - Shell tools (bash/exec_command/...): require BOTH an api-host substring
+      AND a recognizable HTTP-issuing marker (curl, urllib, etc). The marker
+      gate filters heredoc-pasted JSON that incidentally contains api host URLs.
+    - Webfetch-style tools (opencode `webfetch`, claude-code `WebFetch`): match
+      the `url` argument directly against the app's api hosts.
     """
-    if _name(tc) not in SHELL_TOOLS:
-        return False
-    cmd = _command(tc)
-    if not any(host in cmd for host in APPS[app]["api_hosts"]):
-        return False
-    return any(m in cmd for m in _HTTP_TOOL_MARKERS)
+    name = _name(tc)
+    hosts = APPS[app]["api_hosts"]
+    if name in SHELL_TOOLS:
+        cmd = _command(tc)
+        if not any(host in cmd for host in hosts):
+            return False
+        return any(m in cmd for m in _HTTP_TOOL_MARKERS)
+    if name in WEBFETCH_TOOLS:
+        url = (tc.get("arguments") or {}).get("url") or ""
+        return any(host in url for host in hosts)
+    return False
 
 
 def classify_call(tc: dict, app: str | None, connector: str | None) -> str:

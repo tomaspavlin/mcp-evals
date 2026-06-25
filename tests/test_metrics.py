@@ -63,6 +63,18 @@ class TestClassifyCall:
         )
         assert classify_call(_call("exec_command", cmd=cmd), "apify", "mcp") == "escape"
 
+    def test_webfetch_to_api_host_is_escape(self):
+        # opencode/claude-code native webfetch tool bypasses the shell - the
+        # target URL lives in arguments.url, not in a shell command.
+        opencode = _call("webfetch", url="https://api.apify.com/v2/acts/x", format="text")
+        claude = _call("WebFetch", url="https://api.github.com/repos/o/r/pulls/1", prompt="...")
+        assert classify_call(opencode, "apify", "mcp") == "escape"
+        assert classify_call(claude, "github", "mcp") == "escape"
+
+    def test_webfetch_to_non_api_host_is_not_escape(self):
+        tc = _call("webfetch", url="https://docs.apify.com/platform/actors", format="text")
+        assert classify_call(tc, "apify", "mcp") == "other"
+
     def test_heredoc_with_embedded_api_url_is_not_escape(self):
         # Local text parsing of prior tool output (which contained
         # https://api.github.com/... links) must NOT count.
