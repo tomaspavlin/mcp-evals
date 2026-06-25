@@ -14,8 +14,8 @@ EXPECTED = {
 }
 TRAJECTORY_PATH = "/logs/agent/trajectory.json"
 
-_connectors = json.loads(os.environ.get("MCP_EVALS_CONNECTORS_JSON") or "{}")
-_default_connector = os.environ.get("MCP_EVALS_CONNECTOR") or None
+_connectors = json.loads(os.environ.get("CONNECTOR_EVALS_CONNECTORS_JSON") or "{}")
+_default_connector = os.environ.get("CONNECTOR_EVALS_CONNECTOR") or None
 
 
 def _resolve(app: str) -> str | None:

@@ -16,9 +16,9 @@ Harbor's `MCPServerConfig` accepts `name | transport | url | command | args`. **
 
 ```
 tasks/<name>/
-  task.toml                  # per-task timeouts + [mcp_evals].apps = [...]
+  task.toml                  # per-task timeouts + [connector_evals].apps = [...]
   instruction.md             # task only - no mention of connector
-  environment/               # gitignored; materialized from images/base/ on `mcp-evals run`
+  environment/               # gitignored; materialized from images/base/ on `connector-evals run`
   tests/
     test.sh, check.py        # Reward Kit verifier (see below)
   solution/solve.sh
@@ -40,16 +40,16 @@ configs/
   <task>-<harness>-<model>-<connector>-eval.yaml   # RunConfig: connector: <name>
 ```
 
-The materialize step (`mcp-evals run` does it automatically; `mcp-evals materialize` exposes it standalone) copies `images/base/` into each target task's `environment/` dir before harbor sees the task. The Dockerfile is identical across all runs, so the sandbox template cache stays hot. Per-task env dirs are gitignored - `images/base/` is the source of truth.
+The materialize step (`connector-evals run` does it automatically; `connector-evals materialize` exposes it standalone) copies `images/base/` into each target task's `environment/` dir before harbor sees the task. The Dockerfile is identical across all runs, so the sandbox template cache stays hot. Per-task env dirs are gitignored - `images/base/` is the source of truth.
 
 ## task.toml snippet
 
-Per-task overrides (timeouts, optional verifier env) plus a `[mcp_evals]` block listing which apps the task needs. No `[[environment.mcp_servers]]`, no token passthrough - those are hoisted to the cell / `defaults.py`.
+Per-task overrides (timeouts, optional verifier env) plus a `[connector_evals]` block listing which apps the task needs. No `[[environment.mcp_servers]]`, no token passthrough - those are hoisted to the cell / `defaults.py`.
 
 ```toml
 version = "1.0"
 
-[mcp_evals]
+[connector_evals]
 apps = ["apify"]                  # or ["apify", "github"] for cross-app
 
 [verifier]
@@ -124,7 +124,7 @@ The `sed` is not cosmetic. `mcp-remote` logs the raw `Authorization` header to s
 
 ## Verifier pattern (Reward Kit)
 
-`tests/test.sh` is a one-liner that runs [Reward Kit](https://www.harborframework.com/docs/rewardkit); it discovers criteria in `/tests/`, evaluates them against the workspace at `/app`, and writes `/logs/verifier/reward.json`. No pytest, no manual reward file. The verifier reads the per-app connector map from `MCP_EVALS_CONNECTORS_JSON` (primary), `MCP_EVALS_CONNECTOR` (shorthand when one connector applies to all), and `MCP_EVALS_APPS` (csv of app names).
+`tests/test.sh` is a one-liner that runs [Reward Kit](https://www.harborframework.com/docs/rewardkit); it discovers criteria in `/tests/`, evaluates them against the workspace at `/app`, and writes `/logs/verifier/reward.json`. No pytest, no manual reward file. The verifier reads the per-app connector map from `CONNECTOR_EVALS_CONNECTORS_JSON` (primary), `CONNECTOR_EVALS_CONNECTOR` (shorthand when one connector applies to all), and `CONNECTOR_EVALS_APPS` (csv of app names).
 
 ```bash
 # tests/test.sh
@@ -156,7 +156,7 @@ def actor_id_matches(workspace: Path) -> bool:
 ## Adapt for another app
 
 1. Copy `tasks/apify-fetch-actor-id/` to `tasks/<app>-<task>/` (drop the `environment/` dir - it's now owned by `images/base/`).
-2. Rewrite `instruction.md` (task only, no connector wording) and `tests/check.py` for the new app. Set `[mcp_evals].apps = ["<app>"]` in `task.toml`.
+2. Rewrite `instruction.md` (task only, no connector wording) and `tests/check.py` for the new app. Set `[connector_evals].apps = ["<app>"]` in `task.toml`.
 3. In `.env.example` + `.env`: add the new token.
 4. Create `apps/<app>/<connector>/` cells (one per connector you support) with `cell.yaml` (`mcp_servers` and/or `setup_env`, `environment_env`) and `instruction.md` (connector wording). If a new MCP proxy is needed, drop a `<app>-mcp-proxy.sh` into `images/base/` and install it from the Dockerfile.
 5. Add a RunConfig under `configs/` with `connector: <name>` and `tasks: - path: tasks/<app>-<task>`. See `configs/apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml` for the canonical example.

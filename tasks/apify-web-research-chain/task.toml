@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/apify-web-research-chain"
+name = "connector-evals/apify-web-research-chain"
 description = "Chain a search Actor then a crawler Actor to research Crawlee; trajectory judge verifies the two-step process."
 
 [metadata]
@@ -9,7 +9,7 @@ difficulty = "hard"
 category = "multi-step-chaining"
 tags = ["read-only", "two-actor"]
 
-[mcp_evals]
+[connector_evals]
 apps = ["apify"]
 
 [verifier]

@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/github-bug-triage-search"
+name = "connector-evals/github-bug-triage-search"
 description = "axi/bug_triage_search: Search for issues in openclaw/openclaw mentioning 'rate limit'. How many results are there... LLM trajectory judge."
 
 [metadata]
@@ -10,7 +10,7 @@ category = "investigation"
 tags = ["read-only", "investigation"]
 axi_task = "bug_triage_search"
 
-[mcp_evals]
+[connector_evals]
 apps = ["github"]
 
 [verifier]

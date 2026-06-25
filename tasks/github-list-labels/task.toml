@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/github-list-labels"
+name = "connector-evals/github-list-labels"
 description = "axi/list_labels: List the labels in openclaw/openclaw and report how many there are. LLM trajectory judge."
 
 [metadata]
@@ -10,7 +10,7 @@ category = "single_step"
 tags = ["read-only", "single-step"]
 axi_task = "list_labels"
 
-[mcp_evals]
+[connector_evals]
 apps = ["github"]
 
 [verifier]

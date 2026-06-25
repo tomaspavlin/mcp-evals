@@ -5,10 +5,10 @@ import pytest
 from harbor.models.job.config import DatasetConfig
 from typer.testing import CliRunner
 
-from mcp_evals.cli.main import app
-from mcp_evals.config import RunConfig
-from mcp_evals.apps.loader import load_app_cell
-from mcp_evals.apps.resolver import resolve_apps
+from connector_evals.cli.main import app
+from connector_evals.config import RunConfig
+from connector_evals.apps.loader import load_app_cell
+from connector_evals.apps.resolver import resolve_apps
 
 
 def _write_cell(root, app, connector, yaml_body):
@@ -134,7 +134,7 @@ class TestCliFlagOverridesConfig:
 def _write_task(root, name, apps):
     d = root / name
     d.mkdir(parents=True)
-    body = '[mcp_evals]\napps = [' + ", ".join(f'"{a}"' for a in apps) + ']\n'
+    body = '[connector_evals]\napps = [' + ", ".join(f'"{a}"' for a in apps) + ']\n'
     (d / "task.toml").write_text(body)
     return d
 

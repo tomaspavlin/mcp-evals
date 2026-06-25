@@ -1,7 +1,7 @@
 """Helpers to figure out which (app, connector) cells a run needs.
 
 Apps can come from `RunConfig.apps` directly, or be auto-resolved
-by reading `[mcp_evals].apps` from each task's task.toml. Connector comes
+by reading `[connector_evals].apps` from each task's task.toml. Connector comes
 from `RunConfig.connector` (one connector for every app) with optional
 per-app overrides via `RunConfig.app_connectors`.
 """
@@ -12,17 +12,17 @@ import tomllib
 from fnmatch import fnmatch
 from pathlib import Path
 
-from mcp_evals.config import RunConfig
-from mcp_evals.apps.materialize import discover_dataset_task_paths
+from connector_evals.config import RunConfig
+from connector_evals.apps.materialize import discover_dataset_task_paths
 
 
 def read_task_apps(task_path: Path) -> list[str]:
-    """Read `[mcp_evals].apps` from task_path/task.toml, or []."""
+    """Read `[connector_evals].apps` from task_path/task.toml, or []."""
     toml_path = task_path / "task.toml"
     if not toml_path.is_file():
         return []
     data = tomllib.loads(toml_path.read_text())
-    return list((data.get("mcp_evals") or {}).get("apps") or [])
+    return list((data.get("connector_evals") or {}).get("apps") or [])
 
 
 def run_task_paths(run: RunConfig) -> list[Path]:
@@ -45,7 +45,7 @@ def run_task_paths(run: RunConfig) -> list[Path]:
 def resolve_apps(run: RunConfig) -> list[str]:
     """App list for the run, in stable order.
 
-    Precedence: explicit `run.apps` > union of per-task `[mcp_evals].apps`.
+    Precedence: explicit `run.apps` > union of per-task `[connector_evals].apps`.
     """
     if run.apps:
         return list(run.apps)

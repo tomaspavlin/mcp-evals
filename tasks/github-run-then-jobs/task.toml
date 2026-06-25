@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/github-run-then-jobs"
+name = "connector-evals/github-run-then-jobs"
 description = "axi/run_then_jobs: List recent workflow runs in openclaw/openclaw, pick the most recent completed one, then v... LLM trajectory judge."
 
 [metadata]
@@ -10,7 +10,7 @@ category = "multi_step"
 tags = ["read-only", "multi-step"]
 axi_task = "run_then_jobs"
 
-[mcp_evals]
+[connector_evals]
 apps = ["github"]
 
 [verifier]

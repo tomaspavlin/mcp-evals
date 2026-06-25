@@ -9,8 +9,8 @@ TRAJECTORY_PATH = "/logs/agent/trajectory.json"
 
 import json as _json
 APP = "apify"
-_connectors = _json.loads(os.environ.get("MCP_EVALS_CONNECTORS_JSON") or "{}")
-EXPECTED_CONNECTOR = _connectors.get(APP) or os.environ.get("MCP_EVALS_CONNECTOR") or None
+_connectors = _json.loads(os.environ.get("CONNECTOR_EVALS_CONNECTORS_JSON") or "{}")
+EXPECTED_CONNECTOR = _connectors.get(APP) or os.environ.get("CONNECTOR_EVALS_CONNECTOR") or None
 # `skill` connector is CLI usage + extra prompt; match like cli.
 if EXPECTED_CONNECTOR in ("skill", "cli+skill"):
     EXPECTED_CONNECTOR = "cli"
@@ -21,7 +21,7 @@ def _tool_calls() -> list[dict]:
     return collect_tool_calls(data) if data else []
 
 
-# Connector matching mirrored from src/mcp_evals/metrics.py (cannot import the
+# Connector matching mirrored from src/connector_evals/metrics.py (cannot import the
 # package inside the verifier container); keep both in sync manually.
 APIFY_MCP_TOOLS = {
     "fetch-actor-details",

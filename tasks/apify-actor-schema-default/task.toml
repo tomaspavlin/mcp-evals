@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/apify-actor-schema-default"
+name = "connector-evals/apify-actor-schema-default"
 description = "Read a default value from an Apify Actor's input JSON schema."
 
 [metadata]
@@ -9,7 +9,7 @@ difficulty = "easy"
 category = "schema-literacy"
 tags = ["read-only", "single-call"]
 
-[mcp_evals]
+[connector_evals]
 apps = ["apify"]
 
 [verifier]

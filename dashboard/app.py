@@ -13,22 +13,22 @@ import streamlit as st
 from harbor.viewer.scanner import JobScanner
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-# Set by `mcp-evals dashboard` so external projects can point at their own jobs dir.
-JOBS_DIR = Path(os.environ.get("MCP_EVALS_JOBS_DIR", REPO_ROOT / "jobs")).expanduser().resolve()
-# Fallback parse for jobs predating MCP_EVALS_CONNECTOR in verifier env.
+# Set by `connector-evals dashboard` so external projects can point at their own jobs dir.
+JOBS_DIR = Path(os.environ.get("CONNECTOR_EVALS_JOBS_DIR", REPO_ROOT / "jobs")).expanduser().resolve()
+# Fallback parse for jobs predating CONNECTOR_EVALS_CONNECTOR in verifier env.
 KNOWN_CONNECTORS = {"mcp", "cli", "skill", "cli+skill", "mcpc"}
 GROUP_KEYS = ["trial", "job", "apps", "connector", "task", "agent", "model"]
 
 # Shared trajectory-metric logic (stdlib-only). Loaded by file path because the
-# dashboard venv has streamlit+harbor but not the mcp_evals package, and
+# dashboard venv has streamlit+harbor but not the connector_evals package, and
 # importing the package would also trigger its harbor monkey-patches.
 _spec = importlib.util.spec_from_file_location(
-    "mcp_evals_metrics", REPO_ROOT / "src" / "mcp_evals" / "metrics.py"
+    "connector_evals_metrics", REPO_ROOT / "src" / "connector_evals" / "metrics.py"
 )
 metrics_mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(metrics_mod)
 
-st.set_page_config(page_title="mcp-evals dashboard", layout="wide")
+st.set_page_config(page_title="connector-evals dashboard", layout="wide")
 # Widen the sidebar and let multiselect chips show full job names instead of ellipsing.
 st.markdown(
     """
@@ -41,7 +41,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-st.title("mcp-evals dashboard")
+st.title("connector-evals dashboard")
 
 
 def read_json(path: Path) -> dict | None:
@@ -75,7 +75,7 @@ def _normalize_connector(c: str | None) -> str | None:
 
 
 def _fallback_connector(job_name: str) -> str:
-    # Used only when the trial's verifier env lacks MCP_EVALS_CONNECTOR.
+    # Used only when the trial's verifier env lacks CONNECTOR_EVALS_CONNECTOR.
     # Naming convention (AGENTS.md): <dataset>-<harness>-<model>-<connector>-<purpose>.
     for tok in job_name.split("-"):
         if tok in KNOWN_CONNECTORS:

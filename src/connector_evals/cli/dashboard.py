@@ -35,9 +35,9 @@ def dashboard_command(
     """Launch the streamlit dashboard against a jobs dir.
 
     Example usage:
-        mcp-evals dashboard                    # ./jobs
-        mcp-evals dashboard evals/jobs         # an external project's jobs dir
-        mcp-evals dashboard ~/x/jobs -p 9000 --host 0.0.0.0 --no-browser
+        connector-evals dashboard                    # ./jobs
+        connector-evals dashboard evals/jobs         # an external project's jobs dir
+        connector-evals dashboard ~/x/jobs -p 9000 --host 0.0.0.0 --no-browser
     """
     jobs_dir = jobs_dir.expanduser().resolve()
     if not jobs_dir.is_dir():
@@ -71,7 +71,7 @@ def dashboard_command(
     if no_browser:
         cmd += ["--server.headless", "true"]
 
-    os.environ["MCP_EVALS_JOBS_DIR"] = str(jobs_dir)
+    os.environ["CONNECTOR_EVALS_JOBS_DIR"] = str(jobs_dir)
     try:
         os.execv(streamlit, cmd)
     except OSError as e:

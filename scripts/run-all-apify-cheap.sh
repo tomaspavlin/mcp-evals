@@ -2,7 +2,7 @@
 # Run the four apify-all-opencode-cheap variant configs sequentially.
 # Continues past failures so one bad variant doesn't block the rest.
 #
-# Usage: ./scripts/run-all-apify-cheap.sh [extra mcp-evals flags...]
+# Usage: ./scripts/run-all-apify-cheap.sh [extra connector-evals flags...]
 set -u
 
 FAILED=()
@@ -10,7 +10,7 @@ FAILED=()
 for variant in mcp cli mcpc skill; do
   CONFIG="configs/apify-all-opencode-cheap-${variant}-eval.yaml"
   echo "=== $CONFIG ==="
-  if ! uv run mcp-evals run -c "$CONFIG" -y "$@"; then
+  if ! uv run connector-evals run -c "$CONFIG" -y "$@"; then
     FAILED+=("$CONFIG")
   fi
 done

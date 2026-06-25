@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/apify-maps-place-info"
+name = "connector-evals/apify-maps-place-info"
 description = "Find a place on Google Maps via a self-selected Apify Actor; trajectory judge verifies actor choice."
 
 [metadata]
@@ -9,7 +9,7 @@ difficulty = "medium"
 category = "actor-selection"
 tags = ["read-only", "single-actor"]
 
-[mcp_evals]
+[connector_evals]
 apps = ["apify"]
 
 [verifier]

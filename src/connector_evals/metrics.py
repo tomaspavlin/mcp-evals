@@ -1,7 +1,7 @@
 """Trajectory-derived metrics shared by dashboards and analysis scripts.
 
 Stdlib-only by design: import this from any app (Streamlit dashboard, notebooks,
-scripts) without pulling in harbor or mcp_evals dependencies. Callers do IO and
+scripts) without pulling in harbor or connector_evals dependencies. Callers do IO and
 pass the parsed ATIF trajectory dict.
 
 Connector-matching logic is mirrored (not imported) by the in-container verifier
@@ -96,12 +96,12 @@ _ERROR_SUBSTRINGS = ("command not found", "permission denied")
 def parse_run_axes(verifier_env: dict[str, str] | None) -> dict[str, str]:
     """Read the per-app connector map a job wrote to verifier env.
 
-    Prefers MCP_EVALS_CONNECTORS_JSON (multi-app); falls back to
-    MCP_EVALS_CONNECTOR + MCP_EVALS_APPS when present. Returns {} when
+    Prefers CONNECTOR_EVALS_CONNECTORS_JSON (multi-app); falls back to
+    CONNECTOR_EVALS_CONNECTOR + CONNECTOR_EVALS_APPS when present. Returns {} when
     neither is set (e.g. old jobs predating these fields).
     """
     env = verifier_env or {}
-    raw = env.get("MCP_EVALS_CONNECTORS_JSON")
+    raw = env.get("CONNECTOR_EVALS_CONNECTORS_JSON")
     if raw:
         try:
             data = json.loads(raw)
@@ -109,8 +109,8 @@ def parse_run_axes(verifier_env: dict[str, str] | None) -> dict[str, str]:
                 return {str(k): str(v) for k, v in data.items()}
         except json.JSONDecodeError:
             pass
-    connector = env.get("MCP_EVALS_CONNECTOR")
-    apps = (env.get("MCP_EVALS_APPS") or "").split(",")
+    connector = env.get("CONNECTOR_EVALS_CONNECTOR")
+    apps = (env.get("CONNECTOR_EVALS_APPS") or "").split(",")
     apps = [c.strip() for c in apps if c.strip()]
     if connector and apps:
         return {c: connector for c in apps}
@@ -120,7 +120,7 @@ def parse_run_axes(verifier_env: dict[str, str] | None) -> dict[str, str]:
 def app_for_task(task_name: str) -> str | None:
     """Derive the primary app from the task-name prefix (apify-*, github-*).
 
-    Multi-app tasks should set `[mcp_evals].apps` in task.toml
+    Multi-app tasks should set `[connector_evals].apps` in task.toml
     instead of relying on this heuristic - this is a fallback used by the
     dashboard for legacy jobs that didn't write verifier env axes.
     """

@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/apify-rag-browser-host"
+name = "connector-evals/apify-rag-browser-host"
 description = "Run rag-web-browser on example.com, parse dataset, extract hostname from metadata.url."
 
 [metadata]
@@ -9,7 +9,7 @@ difficulty = "medium"
 category = "actor-run"
 tags = ["read-only", "single-actor", "dataset-parse"]
 
-[mcp_evals]
+[connector_evals]
 apps = ["apify"]
 
 [verifier]

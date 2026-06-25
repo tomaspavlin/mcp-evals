@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/apify-amazon-keyboard"
+name = "connector-evals/apify-amazon-keyboard"
 description = "Competitive pricing: most-reviewed wired mechanical keyboard under $100 with rating >= 4.4. Judge verifies wired-mechanical-keyboard identity."
 
 [metadata]
@@ -9,7 +9,7 @@ difficulty = "hard"
 category = "competitive-intel"
 tags = ["read-only", "filter", "sort", "judge"]
 
-[mcp_evals]
+[connector_evals]
 apps = ["apify"]
 
 [verifier]

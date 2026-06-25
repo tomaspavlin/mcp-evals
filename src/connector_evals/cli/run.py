@@ -9,15 +9,15 @@ from harbor.models.trial.config import TaskConfig
 from rich.console import Console
 from typer import Option
 
-from mcp_evals.config import RunAgentConfig, RunConfig, load_run_config
-from mcp_evals.apps.loader import APPS_DIR, load_app_cell
-from mcp_evals.apps.materialize import materialize_for_tasks
-from mcp_evals.apps.resolver import (
+from connector_evals.config import RunAgentConfig, RunConfig, load_run_config
+from connector_evals.apps.loader import APPS_DIR, load_app_cell
+from connector_evals.apps.materialize import materialize_for_tasks
+from connector_evals.apps.resolver import (
     resolve_app_connectors,
     resolve_apps,
     run_task_paths,
 )
-from mcp_evals.job_builder import build_job_config
+from connector_evals.job_builder import build_job_config
 
 console = Console()
 
@@ -28,7 +28,7 @@ def run_command(
         Option(
             "-c",
             "--config",
-            help="mcp-evals RunConfig yaml. Optional if --connector plus tasks/dataset + agent are given via flags.",
+            help="connector-evals RunConfig yaml. Optional if --connector plus tasks/dataset + agent are given via flags.",
             show_default=False,
         ),
     ] = None,
@@ -44,7 +44,7 @@ def run_command(
         list[str] | None,
         Option(
             "--app",
-            help="App name (repeatable). If omitted, auto-resolved from each task's [mcp_evals].apps in task.toml.",
+            help="App name (repeatable). If omitted, auto-resolved from each task's [connector_evals].apps in task.toml.",
             show_default=False,
         ),
     ] = None,
@@ -211,7 +211,7 @@ def run_command(
     if not app_names:
         raise typer.BadParameter(
             "No apps resolved. Set --app flags, RunConfig.apps, "
-            "or `[mcp_evals].apps` in each task.toml."
+            "or `[connector_evals].apps` in each task.toml."
         )
     connector_map = resolve_app_connectors(run, app_names)
     cells = [

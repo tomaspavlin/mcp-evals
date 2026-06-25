@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/apify-scrape-page"
+name = "connector-evals/apify-scrape-page"
 description = "Run a named Apify Actor to scrape a page and extract a field."
 
 [metadata]
@@ -9,7 +9,7 @@ difficulty = "easy"
 category = "single-actor-run"
 tags = ["read-only", "single-actor"]
 
-[mcp_evals]
+[connector_evals]
 apps = ["apify"]
 
 [verifier]

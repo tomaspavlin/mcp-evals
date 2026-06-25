@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/github-list-releases"
+name = "connector-evals/github-list-releases"
 description = "axi/list_releases: List releases for openclaw/openclaw and report the 3 most recent tag names. LLM trajectory judge."
 
 [metadata]
@@ -10,7 +10,7 @@ category = "single_step"
 tags = ["read-only", "single-step"]
 axi_task = "list_releases"
 
-[mcp_evals]
+[connector_evals]
 apps = ["github"]
 
 [verifier]

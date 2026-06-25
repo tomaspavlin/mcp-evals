@@ -52,7 +52,7 @@ than OpenAI's own endpoint).
 This patch chains on top of `codex_mcp_env.py`: it calls the previously
 installed `_build_register_mcp_servers_command` and appends its own
 config block, so both env-forwarding for MCP servers and the provider
-override compose. Import order in `mcp_evals/__init__.py` matters and
+override compose. Import order in `connector_evals/__init__.py` matters and
 is enforced alphabetically (codex_mcp_env before codex_wire_api).
 
 TODO: remove when upstream harbor adds model-provider configuration to

@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/apify-lead-gen-coffee"
+name = "connector-evals/apify-lead-gen-coffee"
 description = "Lead-gen chain: Google Maps + website crawl + contact extraction for Portland coffee roasters. Judge verifies multi-Actor process."
 
 [metadata]
@@ -9,7 +9,7 @@ difficulty = "hard"
 category = "lead-generation"
 tags = ["read-only", "multi-actor", "chain", "filter", "judge"]
 
-[mcp_evals]
+[connector_evals]
 apps = ["apify"]
 
 [verifier]

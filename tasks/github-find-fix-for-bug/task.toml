@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/github-find-fix-for-bug"
+name = "connector-evals/github-find-fix-for-bug"
 description = "axi/find_fix_for_bug: Find the most recent open issue in openclaw/openclaw labeled 'bug'. Check if any open PRs ... LLM trajectory judge."
 
 [metadata]
@@ -10,7 +10,7 @@ category = "investigation"
 tags = ["read-only", "investigation"]
 axi_task = "find_fix_for_bug"
 
-[mcp_evals]
+[connector_evals]
 apps = ["github"]
 
 [verifier]

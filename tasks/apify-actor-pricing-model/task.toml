@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/apify-actor-pricing-model"
+name = "connector-evals/apify-actor-pricing-model"
 description = "Look up an Apify Actor's pricing model identifier."
 
 [metadata]
@@ -9,7 +9,7 @@ difficulty = "easy"
 category = "metadata-lookup"
 tags = ["read-only", "single-call"]
 
-[mcp_evals]
+[connector_evals]
 apps = ["apify"]
 
 [verifier]

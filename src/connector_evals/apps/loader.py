@@ -3,7 +3,7 @@ from pathlib import Path
 
 import yaml
 
-from mcp_evals.apps.model import AppCell
+from connector_evals.apps.model import AppCell
 
 APPS_DIR = Path("apps")
 

@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/github-invalid-issue"
+name = "connector-evals/github-invalid-issue"
 description = "axi/invalid_issue: View issue #999999 in openclaw/openclaw and tell me what happened. LLM trajectory judge."
 
 [metadata]
@@ -10,7 +10,7 @@ category = "error_recovery"
 tags = ["read-only", "error-recovery"]
 axi_task = "invalid_issue"
 
-[mcp_evals]
+[connector_evals]
 apps = ["github"]
 
 [verifier]

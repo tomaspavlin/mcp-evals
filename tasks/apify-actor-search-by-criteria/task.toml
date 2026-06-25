@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/apify-actor-search-by-criteria"
+name = "connector-evals/apify-actor-search-by-criteria"
 description = "Find an Apify Actor matching publisher, category, and name-substring filters."
 
 [metadata]
@@ -9,7 +9,7 @@ difficulty = "easy"
 category = "actor-discovery"
 tags = ["read-only", "search"]
 
-[mcp_evals]
+[connector_evals]
 apps = ["apify"]
 
 [verifier]

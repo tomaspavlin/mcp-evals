@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/github-release-then-body"
+name = "connector-evals/github-release-then-body"
 description = "axi/release_then_body: List releases for openclaw/openclaw, find the release tagged v2026.3.13-1, then view its f... LLM trajectory judge."
 
 [metadata]
@@ -10,7 +10,7 @@ category = "multi_step"
 tags = ["read-only", "multi-step"]
 axi_task = "release_then_body"
 
-[mcp_evals]
+[connector_evals]
 apps = ["github"]
 
 [verifier]

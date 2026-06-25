@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/github-pr-then-checks"
+name = "connector-evals/github-pr-then-checks"
 description = "axi/pr_then_checks: View pull request #50863 in openclaw/openclaw, then check its CI status and report how man... LLM trajectory judge."
 
 [metadata]
@@ -10,7 +10,7 @@ category = "multi_step"
 tags = ["read-only", "multi-step"]
 axi_task = "pr_then_checks"
 
-[mcp_evals]
+[connector_evals]
 apps = ["github"]
 
 [verifier]

@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/github-nonexistent-repo"
+name = "connector-evals/github-nonexistent-repo"
 description = "axi/nonexistent_repo: List issues in openclaw/this-does-not-exist and tell me what happened. LLM trajectory judge."
 
 [metadata]
@@ -10,7 +10,7 @@ category = "error_recovery"
 tags = ["read-only", "error-recovery"]
 axi_task = "nonexistent_repo"
 
-[mcp_evals]
+[connector_evals]
 apps = ["github"]
 
 [verifier]

@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/github-issue-then-comments"
+name = "connector-evals/github-issue-then-comments"
 description = "axi/issue_then_comments: Find the most recent open issue in openclaw/openclaw with the label 'bug', then view its c... LLM trajectory judge."
 
 [metadata]
@@ -10,7 +10,7 @@ category = "multi_step"
 tags = ["read-only", "multi-step"]
 axi_task = "issue_then_comments"
 
-[mcp_evals]
+[connector_evals]
 apps = ["github"]
 
 [verifier]

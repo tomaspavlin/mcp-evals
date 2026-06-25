@@ -24,7 +24,7 @@ class RunConfig(BaseModel):
       `cli+skill` (legacy alias: `skill`). One connector applies to every app
       by default.
     - `apps`: which third-party services the task uses (e.g. `apify`,
-      `github`). Auto-populated from `[mcp_evals].apps` in each task's
+      `github`). Auto-populated from `[connector_evals].apps` in each task's
       task.toml when not set on the run.
     - `app_connectors`: optional per-app override of `connector`,
       for hybrid runs (e.g. github via MCP but apify via CLI).

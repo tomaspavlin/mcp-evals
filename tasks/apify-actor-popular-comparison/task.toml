@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/apify-actor-popular-comparison"
+name = "connector-evals/apify-actor-popular-comparison"
 description = "Pick the more-popular of two Actors by monthly-users statistic."
 
 [metadata]
@@ -9,7 +9,7 @@ difficulty = "easy"
 category = "metadata-lookup"
 tags = ["read-only", "compare"]
 
-[mcp_evals]
+[connector_evals]
 apps = ["apify"]
 
 [verifier]

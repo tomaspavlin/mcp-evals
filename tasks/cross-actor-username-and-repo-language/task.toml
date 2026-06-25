@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/cross-actor-username-and-repo-language"
+name = "connector-evals/cross-actor-username-and-repo-language"
 description = "Look up one Apify Actor field and one GitHub repo field, emit both as JSON."
 
 [metadata]
@@ -9,7 +9,7 @@ difficulty = "easy"
 category = "cross-app"
 tags = ["read-only", "apify", "github"]
 
-[mcp_evals]
+[connector_evals]
 apps = ["apify", "github"]
 
 [verifier]

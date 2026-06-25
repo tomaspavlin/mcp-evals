@@ -1,4 +1,4 @@
-# mcp-evals
+# connector-evals
 
 ## Goal
 
@@ -32,31 +32,31 @@ Each app has cells for the different **connectors** the agent can reach it throu
 
 ## CLI
 
-`mcp-evals run` is the primary entrypoint. Built on Harbor's `Job` API (`src/mcp_evals/`); custom Typer CLI mirroring harbor flag names + `--connector`. Auto-loads `.env` from cwd.
+`connector-evals run` is the primary entrypoint. Built on Harbor's `Job` API (`src/connector_evals/`); custom Typer CLI mirroring harbor flag names + `--connector`. Auto-loads `.env` from cwd.
 
 From a config:
 ```bash
-uv run mcp-evals run -c configs/<name>.yaml -y
+uv run connector-evals run -c configs/<name>.yaml -y
 ```
 
 When the user asks you to run a test, **prefer flag-driven mode over writing a config file** - fewer tokens, no temp yamls to clean up. If a config file is genuinely needed, use the `RunConfig` schema (`connector:` + optional `apps:` + `tasks`/`datasets` + `agents`), never the old harbor `JobConfig` shape.
 
 Ad-hoc via flags (no config file):
 ```bash
-# Apps auto-resolved from [mcp_evals].apps in each task.toml.
-uv run mcp-evals run --connector mcp -a oracle -t tasks/apify-fetch-actor-id -y
-uv run mcp-evals run --connector mcp -a oracle \
+# Apps auto-resolved from [connector_evals].apps in each task.toml.
+uv run connector-evals run --connector mcp -a oracle -t tasks/apify-fetch-actor-id -y
+uv run connector-evals run --connector mcp -a oracle \
   --dataset-path tasks --task-name 'apify-*' --exclude-task-name apify-mcp-connected -y
 
 # Explicit app list (overrides task.toml):
-uv run mcp-evals run --connector mcp --app apify --app github -a oracle -t tasks/cross-actor-meta-and-repo-meta -y
+uv run connector-evals run --connector mcp --app apify --app github -a oracle -t tasks/cross-actor-meta-and-repo-meta -y
 ```
 
 Flags: `--connector {mcp,cli,mcpc,cli+skill}`, `--app NAME` (repeatable, optional), `--apps-dir PATH` (default `./apps`), `-a/--agent NAME`, `-m/--model MODEL` (omit for oracle), `-t/--task PATH` (repeatable), `-p/--dataset-path PATH`, `--task-name GLOB` (repeatable), `--exclude-task-name GLOB` (repeatable), `--job-name`, `-o/--jobs-dir PATH` (default `./jobs`), `-k/--n-attempts`, `-n/--n-concurrent`, `--env {docker,daytona,e2b,...}` (sandbox backend, default e2b), `--env-file`, `-y`. Each flag overrides whatever's in `-c`. Eval definitions can live in an external repo: see "Usage" in `README.md` (covers `--apps-dir`, `-o/--jobs-dir`, and yaml-relative `skills:` globs).
 
 ## Configs
 
-Schema (our `RunConfig`, ~8 lines): `job_name`, `connector` (mcp|cli|mcpc|cli+skill), optional `apps` (auto-resolved from each task's `[mcp_evals].apps` when omitted), optional `app_connectors` for hybrid runs, `tasks` / `datasets`, `agents` (just `name` + `model_name` + optional `kwargs`), optional `apps_dir` / `jobs_dir` for eval definitions living outside this repo. Everything else - environment, mcp_servers, skills, instruction append, verifier env, default agent kwargs, concurrency - comes from the loaded app cells + `src/mcp_evals/defaults.py`. See `configs/apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml` for the canonical example.
+Schema (our `RunConfig`, ~8 lines): `job_name`, `connector` (mcp|cli|mcpc|cli+skill), optional `apps` (auto-resolved from each task's `[connector_evals].apps` when omitted), optional `app_connectors` for hybrid runs, `tasks` / `datasets`, `agents` (just `name` + `model_name` + optional `kwargs`), optional `apps_dir` / `jobs_dir` for eval definitions living outside this repo. Everything else - environment, mcp_servers, skills, instruction append, verifier env, default agent kwargs, concurrency - comes from the loaded app cells + `src/connector_evals/defaults.py`. See `configs/apify-fetch-actor-id-opencode-deepseek-mcp-eval.yaml` for the canonical example.
 
 Naming: `<dataset>-<harness>-<model>-<connector>-<purpose>.yaml`; `<connector>` is `mcp`, `cli`, `cli+skill`, or `mcpc` (shell-driven MCP via [`@apify/mcpc`](https://github.com/apify/mcpc)); legacy alias `skill` is accepted on read for historical jobs; `<purpose>` is `eval`. Keep secrets in `.env`, never in yaml.
 
@@ -87,19 +87,19 @@ Tool access is split into two axes:
 
 Each (app, connector) lives at `apps/<app>/<connector>/`: `cell.yaml` (mcp_servers / env / setup_env / teardown_env) + sibling `instruction.md` + optional `setup.sh` + optional `teardown.sh` + optional `skills/<skill-name>/SKILL.md`. All auto-discovered by the loader. `setup.sh` runs in the sandbox after env start and before the agent, with `setup_env` resolved in scope - use it for pre-auth (e.g. `apify login --token "$APIFY_TOKEN"`) so cli / cli+skill cells match the implicit auth MCP gets. `teardown.sh` runs after the agent and before artifact collection. Setup failure aborts the trial; teardown failure is logged and swallowed. Neither setup nor teardown env leaks into the agent's persistent env. To add a new app, drop a new directory under `apps/`.
 
-Each task declares which apps it needs via `[mcp_evals].apps = [...]` in `task.toml`. A run picks one `connector:` (applied to every app by default) or per-app overrides via `app_connectors:`. The verifier sees the resulting per-app connector map via `MCP_EVALS_CONNECTORS_JSON` (+ `MCP_EVALS_CONNECTOR` shorthand when all apps share a connector).
+Each task declares which apps it needs via `[connector_evals].apps = [...]` in `task.toml`. A run picks one `connector:` (applied to every app by default) or per-app overrides via `app_connectors:`. The verifier sees the resulting per-app connector map via `CONNECTOR_EVALS_CONNECTORS_JSON` (+ `CONNECTOR_EVALS_CONNECTOR` shorthand when all apps share a connector).
 
 ## Harbor patches
 
-`src/mcp_evals/_patches/` holds runtime monkey-patches for harbor upstream gaps (codex MCP env propagation, E2B free-tier sandbox timeout, app-cell `setup.sh` / `teardown.sh` exec in the sandbox). Prefer upstreaming over patching when feasible.
+`src/connector_evals/_patches/` holds runtime monkey-patches for harbor upstream gaps (codex MCP env propagation, E2B free-tier sandbox timeout, app-cell `setup.sh` / `teardown.sh` exec in the sandbox). Prefer upstreaming over patching when feasible.
 
 ## Metrics
 
-Trajectory-derived metrics (connector/escape call classification, errored calls, `prompt_baseline_tokens`, `tests_passed` from reward-details) live in `src/mcp_evals/metrics.py`: stdlib-only pure functions over ATIF trajectories, importable from any app without harbor. Connector matching is mirrored in `tasks/*/tests/check.py` (verifier containers cannot import the package); keep both in sync. Unit tests in `tests/`, run with `uv run pytest`.
+Trajectory-derived metrics (connector/escape call classification, errored calls, `prompt_baseline_tokens`, `tests_passed` from reward-details) live in `src/connector_evals/metrics.py`: stdlib-only pure functions over ATIF trajectories, importable from any app without harbor. Connector matching is mirrored in `tasks/*/tests/check.py` (verifier containers cannot import the package); keep both in sync. Unit tests in `tests/`, run with `uv run pytest`.
 
 ## Dashboard
 
-Custom Streamlit app at `dashboard/` for project-specific plots over `jobs/`. Reads via Harbor's `JobScanner` so schema parsing stays in sync, and loads `src/mcp_evals/metrics.py` by file path for trial metrics. Complements `harbor view jobs`, does not replace it. Launch with `mcp-evals dashboard [JOBS_DIR]` (default `./jobs`; flags `-p/--port`, `--host`, `--no-browser`) - resolves the jobs dir, sets `MCP_EVALS_JOBS_DIR`, and execs streamlit from `dashboard/.venv` (or PATH). See `dashboard/README.md` for setup.
+Custom Streamlit app at `dashboard/` for project-specific plots over `jobs/`. Reads via Harbor's `JobScanner` so schema parsing stays in sync, and loads `src/connector_evals/metrics.py` by file path for trial metrics. Complements `harbor view jobs`, does not replace it. Launch with `connector-evals dashboard [JOBS_DIR]` (default `./jobs`; flags `-p/--port`, `--host`, `--no-browser`) - resolves the jobs dir, sets `CONNECTOR_EVALS_JOBS_DIR`, and execs streamlit from `dashboard/.venv` (or PATH). See `dashboard/README.md` for setup.
 
 ## Project docs
 

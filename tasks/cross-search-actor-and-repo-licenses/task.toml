@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/cross-search-actor-and-repo-licenses"
+name = "connector-evals/cross-search-actor-and-repo-licenses"
 description = "Search Apify Store, fetch two GitHub repos, compare topic counts, emit a combined JSON report."
 
 [metadata]
@@ -9,7 +9,7 @@ difficulty = "hard"
 category = "cross-app"
 tags = ["read-only", "apify", "github", "multi-step", "search"]
 
-[mcp_evals]
+[connector_evals]
 apps = ["apify", "github"]
 
 [verifier]

@@ -43,5 +43,5 @@ jobs/
 .mcp.json
 
 # Materialized task environment dirs (populated from images/base/ by
-# `mcp-evals materialize` or the run pre-step).
+# `connector-evals materialize` or the run pre-step).
 tasks/*/environment/

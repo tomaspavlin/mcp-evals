@@ -10,7 +10,7 @@ mcp = ["fetch-actor-details"]
 cli = ["apify actors info", "apify api"]
 ```
 
-Harbor's task config accepts free-form `[metadata]`. Computed post-hoc in `src/mcp_evals/metrics.py` (no verifier changes): `unexpected_connector_tools` (connector calls outside the set) and `used_only_expected_tools` (bool). Diagnoses tool naming/description quality (agent picked the wrong tool first) and granularity. Deliberately observational, not a reward criterion: tasks can have valid alternative paths.
+Harbor's task config accepts free-form `[metadata]`. Computed post-hoc in `src/connector_evals/metrics.py` (no verifier changes): `unexpected_connector_tools` (connector calls outside the set) and `used_only_expected_tools` (bool). Diagnoses tool naming/description quality (agent picked the wrong tool first) and granularity. Deliberately observational, not a reward criterion: tasks can have valid alternative paths.
 
 ## connector_output_chars undercounts truncated opencode outputs
 
@@ -24,7 +24,7 @@ Harbor's codex adapter converts the codex session log to ATIF with `metrics: nul
 
 Harbor's codex agent (`harbor/agents/installed/codex.py`, `_build_register_mcp_servers_command`) writes only `command`/`url` to `$CODEX_HOME/config.toml`, never `env`. Codex CLI does support `env = { KEY = "value" }` per [codex config reference](https://developers.openai.com/codex/config-reference), so MCP child processes never receive secrets we declared via task `[environment.env]`.
 
-Workaround: `src/mcp_evals/_patches/codex_mcp_env.py` monkey-patches `_build_register_mcp_servers_command` to emit an `env = { KEY = "${KEY}" }` block per MCP server, sourced from a `MCP_SERVER_ENV` mapping. Heredoc with unquoted delimiter so shell substitution happens at exec time in docker (same pattern codex.py:766-770 uses for `OPENAI_BASE_URL`). Remove patch and import in `src/mcp_evals/__init__.py` once harbor lands the fix. Upstream PR still TODO.
+Workaround: `src/connector_evals/_patches/codex_mcp_env.py` monkey-patches `_build_register_mcp_servers_command` to emit an `env = { KEY = "${KEY}" }` block per MCP server, sourced from a `MCP_SERVER_ENV` mapping. Heredoc with unquoted delimiter so shell substitution happens at exec time in docker (same pattern codex.py:766-770 uses for `OPENAI_BASE_URL`). Remove patch and import in `src/connector_evals/__init__.py` once harbor lands the fix. Upstream PR still TODO.
 
 ## Codex agent: MCP tool-name prefix stripped (verifier convention gap)
 
@@ -34,7 +34,7 @@ Workaround: `src/mcp_evals/_patches/codex_mcp_env.py` monkey-patches `_build_reg
 
 Harbor exposes `Job.add_hook(TrialEvent.AGENT_START, ...)` but the `TrialHookEvent` payload (`harbor/trial/hooks.py:21`) carries only `event`, `trial_id`, `task_name`, `config`, `result` - not the live `Trial` or `agent_environment`. So a hook callback can't `exec()` into the running sandbox. `EnvironmentConfig` also has no `setup_script` field, and single-step tasks have no equivalent of multi-step's `steps/<name>/workdir/setup.sh`.
 
-Workaround: `src/mcp_evals/_patches/integration_setup_script.py` monkey-patches `Trial._prepare` to exec a app-cell-provided `setup.sh` after env start + healthcheck + skill upload, before agent setup. Non-zero exit fails the trial loudly. Used by `apps/apify/cli/setup.sh` and `apps/apify/skill/setup.sh` to pre-run `apify login --token "$APIFY_TOKEN"`.
+Workaround: `src/connector_evals/_patches/integration_setup_script.py` monkey-patches `Trial._prepare` to exec a app-cell-provided `setup.sh` after env start + healthcheck + skill upload, before agent setup. Non-zero exit fails the trial loudly. Used by `apps/apify/cli/setup.sh` and `apps/apify/skill/setup.sh` to pre-run `apify login --token "$APIFY_TOKEN"`.
 
 Upstream ask: add `EnvironmentConfig.setup_script` (or expose `agent_environment` on the hook event). Remove the patch and `AppCell.setup_script_path` plumbing once landed.
 
@@ -42,7 +42,7 @@ Upstream ask: add `EnvironmentConfig.setup_script` (or expose `agent_environment
 
 Harbor's `E2BEnvironment._create_sandbox` (`harbor/environments/e2b.py:198`) calls `AsyncSandbox.create(timeout=86_400)` with no override. E2B free plan caps sandbox lifetime at 1 h, so creation fails on a free key.
 
-Workaround: `src/mcp_evals/_patches/e2b_timeout.py` monkey-patches `AsyncSandbox.create` to clamp `timeout` to 3600 s. Remove the patch (and its import in `src/mcp_evals/__init__.py`) when harbor exposes a `sandbox_timeout_secs` arg like `modal.py:883` does, or when we move to E2B paid.
+Workaround: `src/connector_evals/_patches/e2b_timeout.py` monkey-patches `AsyncSandbox.create` to clamp `timeout` to 3600 s. Remove the patch (and its import in `src/connector_evals/__init__.py`) when harbor exposes a `sandbox_timeout_secs` arg like `modal.py:883` does, or when we move to E2B paid.
 
 ## Claude trajectory per-step metrics undercount billed tokens (Harbor gap)
 
@@ -72,7 +72,7 @@ No clean fix without either real OpenAI auth (bypass OpenRouter) or OpenRouter a
 
 ## Shared docker base image for MCP proxies (DONE)
 
-**Status (2026-06-15):** Done as part of the app/connector refactor. `images/base/Dockerfile` installs apify-cli + gh CLI + mcp-remote + @apify/mcpc + copies both proxy scripts; `materialize_environment` (`src/mcp_evals/apps/materialize.py`) copies that dir unchanged into every `tasks/<task>/environment/`. Per-task Dockerfiles are gone.
+**Status (2026-06-15):** Done as part of the app/connector refactor. `images/base/Dockerfile` installs apify-cli + gh CLI + mcp-remote + @apify/mcpc + copies both proxy scripts; `materialize_environment` (`src/connector_evals/apps/materialize.py`) copies that dir unchanged into every `tasks/<task>/environment/`. Per-task Dockerfiles are gone.
 
 ## Output metrics & visualisation
 
@@ -129,7 +129,7 @@ Diagnosed 2026-06-15 from the `apify-fetch-actor-id` matrix (Group B in `docs/ag
 
 ### Race A: shared materialize path → wrong image built (correctness bug, ours)
 
-`materialize_environment` (`src/mcp_evals/integrations/materialize.py:26`) copies the integration's `environment/` into the **task-keyed, shared** path `tasks/<task>/environment/`. The e2b template name is computed lazily at trial-start as `<environment_name>__<dirhash(environment/)>[:8]` (`harbor/environments/definition.py:75`, `e2b.py:84`), where `environment_name` is the **task** name. So nothing in the template identity distinguishes integrations except the dirhash of that shared dir.
+`materialize_environment` (`src/connector_evals/integrations/materialize.py:26`) copies the integration's `environment/` into the **task-keyed, shared** path `tasks/<task>/environment/`. The e2b template name is computed lazily at trial-start as `<environment_name>__<dirhash(environment/)>[:8]` (`harbor/environments/definition.py:75`, `e2b.py:84`), where `environment_name` is the **task** name. So nothing in the template identity distinguishes integrations except the dirhash of that shared dir.
 
 When ≥2 integration jobs for the same task run concurrently (the matrix launched all 4 apify configs within ~4 s), they materialize into and clobber the same `tasks/<task>/environment/`. Whichever Dockerfile is on disk when a trial reaches template-hash time wins. In the 2026-06-14 run the `apify-mcpc` trials hashed+built the **apify-cli** image (`apify-fetch-actor-id__d0745b9e`): `mcpc` was never installed, every `mcpc …` returned exit 127, and agents silently fell back to `curl https://api.apify.com`. The verifier connector check `cmd.startswith("mcpc ")` (`tasks/apify-fetch-actor-id/tests/check.py:58`) counts the *failed attempt* as success, so sonnet/codex scored `used_expected_connector(mcpc)=1.0` despite never running mcpc. **The entire apify-mcpc column was a false pass.**
 

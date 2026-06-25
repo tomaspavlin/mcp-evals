@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/github-pr-review-prep"
+name = "connector-evals/github-pr-review-prep"
 description = "axi/pr_review_prep: I need to review PR #50782 in openclaw/openclaw. Give me a briefing: what it changes (titl... LLM trajectory judge."
 
 [metadata]
@@ -10,7 +10,7 @@ category = "investigation"
 tags = ["read-only", "investigation"]
 axi_task = "pr_review_prep"
 
-[mcp_evals]
+[connector_evals]
 apps = ["github"]
 
 [verifier]

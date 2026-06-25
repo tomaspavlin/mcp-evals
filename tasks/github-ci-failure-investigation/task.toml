@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/github-ci-failure-investigation"
+name = "connector-evals/github-ci-failure-investigation"
 description = "axi/ci_failure_investigation: Look at the 5 most recent failed workflow runs in openclaw/openclaw. For each one, report ... LLM trajectory judge."
 
 [metadata]
@@ -10,7 +10,7 @@ category = "investigation"
 tags = ["read-only", "investigation"]
 axi_task = "ci_failure_investigation"
 
-[mcp_evals]
+[connector_evals]
 apps = ["github"]
 
 [verifier]

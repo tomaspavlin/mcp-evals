@@ -1,7 +1,7 @@
 version = "1.0"
 
 [task]
-name = "mcp-evals/github-list-open-issues"
+name = "connector-evals/github-list-open-issues"
 description = "axi/list_open_issues: List the open issues in openclaw/openclaw and report the title of the most recent one. LLM trajectory judge."
 
 [metadata]
@@ -10,7 +10,7 @@ category = "single_step"
 tags = ["read-only", "single-step"]
 axi_task = "list_open_issues"
 
-[mcp_evals]
+[connector_evals]
 apps = ["github"]
 
 [verifier]

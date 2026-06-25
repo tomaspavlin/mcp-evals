@@ -1,4 +1,4 @@
-# mcp-evals
+# connector-evals
 
 Develop, test, and evaluate the tools you give to AI agents: MCP servers,
 skills, CLI tools. Real agents (claude-code, codex, opencode) run verifiable
@@ -15,9 +15,9 @@ How it works:
    config, the CLI setup, or the skill the agent gets.
 2. Define tasks in `tasks/`: an instruction the agent should accomplish, plus
    a verifier. Each task declares which apps it needs via
-   `[mcp_evals].apps = [...]` in its `task.toml` - one task can use
+   `[connector_evals].apps = [...]` in its `task.toml` - one task can use
    several apps (e.g. apify + github together).
-3. `mcp-evals run` launches the agents in sandboxes on every task with the
+3. `connector-evals run` launches the agents in sandboxes on every task with the
    chosen connector(s) wired up, and runs the verifiers.
 4. Results, including full execution traces, are stored structured under
    `jobs/`. Inspect them in the results browser or dashboard, or point a coding
@@ -27,7 +27,7 @@ How it works:
 ## Concepts
 
 Harbor primitives (Task, Trial, Job, Agent, Environment, Dataset) are documented
-at https://www.harborframework.com/docs/core-concepts. `mcp-evals` adds two
+at https://www.harborframework.com/docs/core-concepts. `connector-evals` adds two
 project-specific axes on top:
 
 - **app** - third-party service the agent talks to (`apify`, `github`, `linear`, `notion`, ...).
@@ -41,19 +41,19 @@ verifier env contract, step-by-step for wiring a new app):
 ## Installation
 
 ```bash
-uv tool install git+https://github.com/tomaspavlin/mcp-evals
+uv tool install git+https://github.com/tomaspavlin/connector-evals
 ```
 
 From a local fork/checkout instead (changes in the checkout apply immediately,
 no reinstall):
 
 ```bash
-uv tool install --editable /path/to/mcp-evals
+uv tool install --editable /path/to/connector-evals
 ```
 
-To use it as a library (`from mcp_evals import ...`) add it as a project
-dependency instead: `uv add git+https://github.com/tomaspavlin/mcp-evals`, then
-invoke the CLI via `uv run mcp-evals`.
+To use it as a library (`from connector_evals import ...`) add it as a project
+dependency instead: `uv add git+https://github.com/tomaspavlin/connector-evals`, then
+invoke the CLI via `uv run connector-evals`.
 
 ## Prerequisites
 
@@ -62,7 +62,7 @@ invoke the CLI via `uv run mcp-evals`.
 - **Daytona account** (alternative cloud sandbox, `--env daytona`) — https://app.daytona.io
 - **Docker** (alternative local sandbox, `--env docker`) — OrbStack works.
 
-Put keys in a `.env` in the directory you run from — `mcp-evals run` auto-loads
+Put keys in a `.env` in the directory you run from — `connector-evals run` auto-loads
 it (`--env-file` overrides). At minimum `OPENROUTER_API_KEY` plus the sandbox
 key (`E2B_API_KEY` by default).
 
@@ -74,12 +74,12 @@ The CLI reads eval definitions relative to the directory you run it from:
   plus optional `instruction.md`, `setup.sh`, `teardown.sh`, `skills/`. Examples
   in this repo's `apps/`.
 - `tasks/<name>/` - Harbor task dirs (`task.toml`, instruction, verifier).
-  `task.toml` declares which apps the task needs via `[mcp_evals].apps`.
+  `task.toml` declares which apps the task needs via `[connector_evals].apps`.
 - `images/base/Dockerfile` - one shared sandbox image with every app tool
   installed; copied unchanged into each task's `environment/` at run time.
 
 ```
-mcp-evals run [-c CONFIG] [--connector CONNECTOR] [--app NAME]...
+connector-evals run [-c CONFIG] [--connector CONNECTOR] [--app NAME]...
               [--apps-dir PATH] [-a AGENT] [-m MODEL]
               [-t TASK]... [-p DATASET_PATH]
               [--task-name GLOB]... [--exclude-task-name GLOB]...
@@ -87,7 +87,7 @@ mcp-evals run [-c CONFIG] [--connector CONNECTOR] [--app NAME]...
               [--env BACKEND] [--env-file PATH] [-y]
 ```
 
-Every flag overrides the corresponding config field; `mcp-evals run --help` for
+Every flag overrides the corresponding config field; `connector-evals run --help` for
 details. Defaults: E2B sandbox (`--env docker` / `--env daytona` to switch),
 `./apps`, `./jobs`.
 
@@ -96,34 +96,34 @@ details. Defaults: E2B sandbox (`--env docker` / `--env daytona` to switch),
 One task, one agent (apps auto-resolved from `task.toml`):
 
 ```bash
-mcp-evals run --connector mcp -t tasks/my-task \
+connector-evals run --connector mcp -t tasks/my-task \
   -a claude-code -m anthropic/claude-haiku-4.5 -y
 ```
 
 A multi-app task (one task, two apps wired up at once):
 
 ```bash
-mcp-evals run --connector mcp -t tasks/cross-actor-meta-and-repo-meta -a oracle -y
+connector-evals run --connector mcp -t tasks/cross-actor-meta-and-repo-meta -a oracle -y
 ```
 
 A whole task dataset with name filtering, oracle agent (replays the reference
 solution, no LLM):
 
 ```bash
-mcp-evals run --connector mcp -a oracle \
+connector-evals run --connector mcp -a oracle \
   --dataset-path tasks --task-name 'apify-*' -y
 ```
 
 From a config (see `configs/` in this repo for the schema):
 
 ```bash
-mcp-evals run -c configs/my-eval.yaml -y
+connector-evals run -c configs/my-eval.yaml -y
 ```
 
 Eval definitions somewhere else than the cwd (e.g. inside an app repo):
 
 ```bash
-mcp-evals run --apps-dir evals/apps -t evals/tasks/my-task \
+connector-evals run --apps-dir evals/apps -t evals/tasks/my-task \
   -o evals/jobs --connector mcp -a claude-code -m ... -y
 ```
 
@@ -152,8 +152,8 @@ harbor view tasks   # task browser
 Project-specific plots (MCP vs CLI vs skill comparisons, etc.) live in a custom app:
 
 ```bash
-mcp-evals dashboard                # ./jobs
-mcp-evals dashboard evals/jobs     # any other jobs dir, e.g. from an app repo
+connector-evals dashboard                # ./jobs
+connector-evals dashboard evals/jobs     # any other jobs dir, e.g. from an app repo
 ```
 
 Flags: `-p/--port` (default 8501), `--host`, `--no-browser`. See
@@ -193,7 +193,7 @@ Project goals, architecture, and conventions: see `AGENTS.md` and `docs/`.
 Requires Python 3.13+.
 
 ```bash
-uv sync                                  # creates .venv, installs harbor[e2b] + mcp-evals
+uv sync                                  # creates .venv, installs harbor[e2b] + connector-evals
 cp .env.example .env                     # then set OPENROUTER_API_KEY, E2B_API_KEY, ...
 uv run pytest                            # unit tests
 ```
@@ -202,13 +202,13 @@ Smoke tests against the bundled evals — zero-cost (no LLM, just verifies the
 Harbor + sandbox loop):
 
 ```bash
-uv run mcp-evals run --connector mcp -t tasks/apify-fetch-actor-id -a oracle -y
+uv run connector-evals run --connector mcp -t tasks/apify-fetch-actor-id -a oracle -y
 ```
 
 Real LLM via OpenRouter (cents):
 
 ```bash
-uv run mcp-evals run --connector mcp -t tasks/apify-fetch-actor-id -a claude-code -m anthropic/claude-haiku-4.5 -y
+uv run connector-evals run --connector mcp -t tasks/apify-fetch-actor-id -a claude-code -m anthropic/claude-haiku-4.5 -y
 ```
 
 `harbor` is also usable standalone (`pipx install harbor`; add

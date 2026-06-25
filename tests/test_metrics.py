@@ -1,4 +1,4 @@
-"""Locks the call-classification and metric logic in mcp_evals.metrics.
+"""Locks the call-classification and metric logic in connector_evals.metrics.
 
 Tool-call shapes are hand-written minimal ATIF fragments mirroring real
 harness output: claude-code (`Bash`, `mcp__apify__*`), opencode (`bash`,
@@ -7,7 +7,7 @@ harness output: claude-code (`Bash`, `mcp__apify__*`), opencode (`bash`,
 
 import json
 
-from mcp_evals.metrics import (
+from connector_evals.metrics import (
     call_errored,
     classify_call,
     compute_trial_metrics,
@@ -15,7 +15,7 @@ from mcp_evals.metrics import (
     failed_criteria,
     sum_subagent_tokens,
 )
-from mcp_evals.metrics import tests_passed as check_tests_passed
+from connector_evals.metrics import tests_passed as check_tests_passed
 
 
 def _call(name, **arguments):
@@ -168,7 +168,7 @@ class TestComputeTrialMetrics:
         assert per_call[1]["output_head"] == "Error: blocked"
 
     def test_call_values(self):
-        from mcp_evals.metrics import call_values
+        from connector_evals.metrics import call_values
         _, per_call = compute_trial_metrics(self._trajectory(), {"apify": "mcp"})
         values = call_values(per_call)
         assert values["escape_call_values"] == ["bash: curl https://api.apify.com/v2/acts/x"]
