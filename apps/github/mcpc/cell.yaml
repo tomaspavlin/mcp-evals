@@ -1,2 +1,3 @@
-environment_env:
+# See apps/apify/mcpc/cell.yaml.
+setup_env:
   GITHUB_TOKEN: ${GITHUB_TOKEN}

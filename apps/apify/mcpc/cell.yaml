@@ -1,2 +1,6 @@
-environment_env:
+# Token is set only during setup.sh (`mcpc connect` persists the header to
+# ~/.mcpc/sessions.json + the bridge daemon's memory); kept out of the
+# container env so the agent can't `echo $APIFY_TOKEN` it into the trajectory.
+# Matches apps/apify/cli/cell.yaml.
+setup_env:
   APIFY_TOKEN: ${APIFY_TOKEN}

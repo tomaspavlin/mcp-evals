@@ -21,6 +21,7 @@ RUN npm install -g apify-cli@1.6.2 mcp-remote@0.1.38 @apify/mcpc@0.3.0 \
 # Stdio shims for remote MCPs (harbor's MCPServerConfig has no `headers` field).
 COPY apify-mcp-proxy.sh /usr/local/bin/apify-mcp-proxy
 COPY github-mcp-proxy.sh /usr/local/bin/github-mcp-proxy
-RUN chmod +x /usr/local/bin/apify-mcp-proxy /usr/local/bin/github-mcp-proxy
+COPY mcp-stdio-probe.py /usr/local/bin/mcp-stdio-probe
+RUN chmod +x /usr/local/bin/apify-mcp-proxy /usr/local/bin/github-mcp-proxy /usr/local/bin/mcp-stdio-probe
 
 WORKDIR /app
