@@ -76,26 +76,90 @@ def _fallback_connector(job_name: str) -> str:
     return "?"
 
 
+# Per-token list prices in USD. cache_write_5m only set where the harness
+# reports cache_creation_input_tokens (claude trajectories' metrics.extra);
+# others fall back to input rate. We register the same rates under every slug
+# variant we see in the wild (trial config vs trajectory.json sometimes order
+# version/family differently, e.g. `claude-sonnet-4.6` vs `claude-4.6-sonnet`).
+# TODO: replace the alias soup with a single canonical key per model and a
+# normalize step in _pricing_for, or always look up using the trajectory's
+# `agent.model_name` (provider-canonical, includes snapshot date) instead of
+# the config slug. See docs/todo.md "Model pricing key lookup".
+_CLAUDE_SONNET_46 = {
+    # https://platform.claude.com/docs/en/about-claude/pricing (Claude Sonnet 4.6 row).
+    "input": 3.0e-6, "cache_read": 0.30e-6, "cache_write_5m": 3.75e-6, "output": 15.0e-6,
+}
+_MODEL_PRICES: dict[str, dict] = {
+    "anthropic/claude-4.6-sonnet": _CLAUDE_SONNET_46,
+    "anthropic/claude-sonnet-4.6": _CLAUDE_SONNET_46,
+    # https://api-docs.deepseek.com/quick_start/pricing
+    "openrouter/deepseek/deepseek-v4-pro": {
+        "input": 0.435e-6, "cache_read": 0.003625e-6, "output": 0.87e-6,
+    },
+    # https://developers.openai.com/api/docs/pricing (gpt-5.4 row).
+    # Codex config uses `openai/gpt-5.4`; trajectory writes bare `gpt-5.4`.
+    "gpt-5.4": {
+        "input": 2.50e-6, "cache_read": 0.25e-6, "output": 15.0e-6,
+    },
+    "openai/gpt-5.4": {
+        "input": 2.50e-6, "cache_read": 0.25e-6, "output": 15.0e-6,
+    },
+}
+
+
+def _pricing_for(model_name: str | None) -> dict | None:
+    if not model_name:
+        return None
+    # Strip OpenRouter @preset/... routing suffix and any trailing -YYYYMMDD
+    # release-date stamp (e.g. anthropic/claude-4.6-sonnet-20260217).
+    base = model_name.split("@", 1)[0]
+    import re
+    base = re.sub(r"-\d{8}$", "", base)
+    return _MODEL_PRICES.get(base) or _MODEL_PRICES.get(model_name)
+
+
+def _step_cost(metrics: dict, pricing: dict) -> float:
+    prompt = metrics.get("prompt_tokens") or 0
+    cached = metrics.get("cached_tokens") or 0
+    completion = metrics.get("completion_tokens") or 0
+    # Claude trajectories expose cache_creation_input_tokens via metrics.extra;
+    # priced at the 1.25x write rate when known, else folded into uncached input.
+    cache_write = ((metrics.get("extra") or {}).get("cache_creation_input_tokens")) or 0
+    uncached = max(0, prompt - cached - cache_write)
+    write_rate = pricing.get("cache_write_5m") or pricing["input"]
+    return (
+        uncached * pricing["input"]
+        + cached * pricing["cache_read"]
+        + cache_write * write_rate
+        + completion * pricing["output"]
+    )
+
+
 @st.cache_data(show_spinner=False)
-def load_trial_timeline(job_name: str, trial_name: str, mtime: float) -> dict:
+def load_trial_timeline(
+    job_name: str, trial_name: str, mtime: float, model_name: str | None = None
+) -> dict:
     # Reads agent/trajectory.json and returns:
-    #   line:   [{t, cum_tokens}] one point per step (for the cumulative line)
-    #   marks:  [{t, cum_tokens, name, args}] one point per tool call (markers)
-    #   n_steps, n_tool_calls
-    # `t` is seconds from the trial's first step.
+    #   line:   [{t, cum_tokens, cum_cost_raw}] one point per step
+    #   marks:  [{t, cum_tokens, cum_cost_raw, name, args}] one point per tool call
+    #   n_steps, n_tool_calls, est_cost_total
+    # `t` is seconds from the trial's first step. cum_cost_raw is the
+    # pricing-table estimate; rescale to Harbor's trial cost_usd at render time.
     del mtime
     traj_path = JOBS_DIR / job_name / trial_name / "agent" / "trajectory.json"
-    empty = {"line": [], "marks": [], "n_steps": 0, "n_tool_calls": 0}
+    empty = {"line": [], "marks": [], "n_steps": 0, "n_tool_calls": 0, "est_cost_total": 0.0}
     if not traj_path.exists():
         return empty
     try:
         steps = json.loads(traj_path.read_text()).get("steps", [])
     except (json.JSONDecodeError, OSError):
         return empty
+    pricing = _pricing_for(model_name)
     line: list[dict] = []
     marks: list[dict] = []
     t0: datetime | None = None
-    cum = 0
+    cum_tokens = 0
+    cum_cost = 0.0
     for s in steps:
         ts = s.get("timestamp")
         if not ts:
@@ -108,13 +172,16 @@ def load_trial_timeline(job_name: str, trial_name: str, mtime: float) -> dict:
         m = s.get("metrics") or {}
         # prompt_tokens per-call already includes history; we still cumsum to
         # reflect total billed token consumption (matches the cost chart).
-        cum += (m.get("prompt_tokens") or 0) + (m.get("completion_tokens") or 0)
-        line.append({"t": t, "step": step_id, "cum_tokens": cum})
+        cum_tokens += (m.get("prompt_tokens") or 0) + (m.get("completion_tokens") or 0)
+        if pricing:
+            cum_cost += _step_cost(m, pricing)
+        line.append({"t": t, "step": step_id, "cum_tokens": cum_tokens, "cum_cost_raw": cum_cost})
         for tc in (s.get("tool_calls") or []):
             marks.append({
                 "t": t,
                 "step": step_id,
-                "cum_tokens": cum,
+                "cum_tokens": cum_tokens,
+                "cum_cost_raw": cum_cost,
                 "name": tc.get("function_name") or "?",
                 "args": tc.get("arguments") or {},
             })
@@ -123,6 +190,7 @@ def load_trial_timeline(job_name: str, trial_name: str, mtime: float) -> dict:
         "marks": marks,
         "n_steps": len(steps),
         "n_tool_calls": len(marks),
+        "est_cost_total": cum_cost,
     }
 
 
@@ -166,7 +234,9 @@ def _fmt_secs(s: float | None) -> str:
 
 
 @st.cache_data(show_spinner=False)
-def load_trial_steps(job_name: str, trial_name: str, mtime: float) -> list[dict]:
+def load_trial_steps(
+    job_name: str, trial_name: str, mtime: float, model_name: str | None = None
+) -> list[dict]:
     # Mirrors what `harbor view jobs` renders per step: source, model, message,
     # reasoning, tool calls, observations, per-step metrics, and timing offsets.
     del mtime
@@ -177,9 +247,11 @@ def load_trial_steps(job_name: str, trial_name: str, mtime: float) -> list[dict]
         steps = json.loads(traj_path.read_text()).get("steps", [])
     except (json.JSONDecodeError, OSError):
         return []
+    pricing = _pricing_for(model_name)
     t0: datetime | None = None
     prev_t: float | None = None
     cum_billed = 0
+    cum_cost_raw = 0.0
     out: list[dict] = []
     for s in steps:
         ts = s.get("timestamp")
@@ -202,6 +274,9 @@ def load_trial_steps(job_name: str, trial_name: str, mtime: float) -> list[dict]
         # Codex trajectories omit cached_tokens — leave uncached as the full prompt.
         uncached = (prompt - cached) if (prompt is not None and cached is not None) else prompt
         cum_billed += (prompt or 0) + (completion or 0)
+        step_cost_raw = _step_cost(m, pricing) if (pricing and (prompt or completion)) else None
+        if step_cost_raw is not None:
+            cum_cost_raw += step_cost_raw
         out.append({
             "step_id": s.get("step_id"),
             "source": s.get("source") or "?",
@@ -215,6 +290,8 @@ def load_trial_steps(job_name: str, trial_name: str, mtime: float) -> list[dict]
             "uncached": uncached,
             "output": completion,
             "cum_billed": cum_billed if (prompt is not None or completion is not None) else None,
+            "step_cost_raw": step_cost_raw,
+            "cum_cost_raw": cum_cost_raw if step_cost_raw is not None else None,
             "t_offset": t_offset,
             "t_delta": t_delta,
         })
@@ -292,6 +369,7 @@ def _render_trajectory_steps(
     steps: list[dict],
     connectors_by_app: dict[str, str],
     state_key: str,
+    trial_cost_usd: float | None = None,
 ) -> None:
     if not steps:
         st.info("No trajectory.json found for this trial.")
@@ -309,12 +387,19 @@ def _render_trajectory_steps(
             for tc in s["tool_calls"]
         ])
 
+    # Rescale per-step raw cost so the column matches Harbor's trial total. If
+    # we have no actual cost (opencode) or no per-step pricing data, factor=1.
+    final_raw = next((s["cum_cost_raw"] for s in reversed(steps) if s["cum_cost_raw"] is not None), 0.0)
+    scale = (trial_cost_usd / final_raw) if (trial_cost_usd and final_raw > 0) else 1.0
+
     rows = []
     for s, kinds in zip(steps, step_kinds):
         preview = _first_line(_normalize_content(s["message"]))
         kind_label = ",".join(sorted(set(kinds))) if kinds else ""
         prompt = (s["metrics"] or {}).get("prompt_tokens")
         cache_rate = (s["cached"] / prompt) if (s["cached"] is not None and prompt) else None
+        step_cost = s["step_cost_raw"] * scale if s["step_cost_raw"] is not None else None
+        cum_cost = s["cum_cost_raw"] * scale if s["cum_cost_raw"] is not None else None
         rows.append({
             "#": s["step_id"],
             "source": s["source"],
@@ -326,6 +411,8 @@ def _render_trajectory_steps(
             "cache%": "" if cache_rate is None else f"{cache_rate:.0%}",
             "out": _fmt_n(s["output"]),
             "Σ tok": _fmt_n(s["cum_billed"]),
+            "$": "" if step_cost is None else f"{step_cost:.4f}",
+            "Σ $": "" if cum_cost is None else f"{cum_cost:.4f}",
             "kind": kind_label,
             "preview": preview,
         })
@@ -861,8 +948,13 @@ with tab_trials:
         picked_idx = ov_event.selection.rows if ov_event and ov_event.selection.rows else None
         picked_trials = [trials[i] for i in picked_idx] if picked_idx else list(trials)
 
-        x_axis = st.selectbox("X axis", ["time (s)", "step", "trial"], index=0)
+        col_x, col_y = st.columns(2)
+        with col_x:
+            x_axis = st.selectbox("X axis", ["time (s)", "step", "trial"], index=0)
+        with col_y:
+            y_axis = st.selectbox("Y axis", ["tokens", "cost (USD)"], index=0)
         only_connector = st.checkbox("Show only connector events", value=False)
+        cost_mode = y_axis == "cost (USD)"
         # Style: color = connector, dash = (model, agent). Trials sharing all
         # three render identically (intentional). Each distinct (connector,
         # model, agent) combination contributes a single legend entry.
@@ -874,8 +966,20 @@ with tab_trials:
         dash_for = {ma: dash_cycle[i % len(dash_cycle)] for i, ma in enumerate(ma_seen)}
         fig_tl = go.Figure()
         tool_call_rows = []
+        # Per-trial cost factoring: raw = pricing-table est, scale rescales raw
+        # so the final point matches Harbor's trial.cost_usd. Recorded so the
+        # audit table can show est_cost_usd alongside the actual.
+        cost_factor: dict[str, float] = {}
+        est_cost_total: dict[str, float] = {}
         for trial_idx, t in enumerate(picked_trials, start=1):
-            tl = load_trial_timeline(t["job"], t["trial"], mtimes.get(t["job"], 0.0))
+            tl = load_trial_timeline(
+                t["job"], t["trial"], mtimes.get(t["job"], 0.0), t.get("model")
+            )
+            est_total = tl["est_cost_total"]
+            est_cost_total[f"{t['job']}/{t['trial']}"] = est_total
+            actual = t.get("cost_usd") or 0.0
+            scale = (actual / est_total) if (cost_mode and est_total > 0 and actual > 0) else 1.0
+            cost_factor[f"{t['job']}/{t['trial']}"] = scale
             verdict = "pass" if t["tests_passed"] else ("error" if t["errored"] else "fail")
             hover_label = f"{t['trial']} · {verdict}<br>{t['job']}"
             kinds = [
@@ -892,6 +996,7 @@ with tab_trials:
                     "connector": t["connector"],
                     "t_s": round(m["t"], 2),
                     "cum_tokens": m["cum_tokens"],
+                    "cum_cost_usd": round(m["cum_cost_raw"] * scale, 6),
                     "tool": m["name"],
                     "args": json.dumps(m["args"])[:300],
                     "kind": kind,
@@ -914,17 +1019,22 @@ with tab_trials:
                     return t["trial"]
                 return r["t"]
 
+            def _y(r):
+                return (r["cum_cost_raw"] * scale) if cost_mode else r["cum_tokens"]
+
+            unit = "USD" if cost_mode else "tokens"
+            yfmt = "$%{y:.4f}" if cost_mode else "%{y} tokens"
             line_shown = x_axis != "trial"
             if line_shown:
                 fig_tl.add_trace(go.Scatter(
                     x=[_x(r) for r in tl["line"]],
-                    y=[r["cum_tokens"] for r in tl["line"]],
+                    y=[_y(r) for r in tl["line"]],
                     mode="lines",
                     name=trace_name,
                     legendgroup=trace_group,
                     showlegend=True,
                     line=dict(color=color, dash=dash),
-                    hovertemplate="%{x}<br>%{y} tokens<extra>" + hover_label + "</extra>",
+                    hovertemplate="%{x}<br>" + yfmt + "<extra>" + hover_label + "</extra>",
                 ))
             visible_marks = [
                 (m, is_ch) for m, is_ch in zip(tl["marks"], connector_flags)
@@ -933,7 +1043,7 @@ with tab_trials:
             if visible_marks:
                 fig_tl.add_trace(go.Scatter(
                     x=[_x(m) for m, _ in visible_marks],
-                    y=[m["cum_tokens"] for m, _ in visible_marks],
+                    y=[_y(m) for m, _ in visible_marks],
                     mode="markers",
                     name=trace_name,
                     legendgroup=trace_group,
@@ -942,14 +1052,28 @@ with tab_trials:
                     showlegend=not line_shown,
                     marker=dict(size=8, symbol="circle", color=color),
                     customdata=[[m["name"], json.dumps(m["args"])[:300]] for m, _ in visible_marks],
-                    hovertemplate="%{x}<br>%{y} tokens<br><b>%{customdata[0]}</b><br>%{customdata[1]}<extra>" + hover_label + "</extra>",
+                    hovertemplate="%{x}<br>" + yfmt + "<br><b>%{customdata[0]}</b><br>%{customdata[1]}<extra>" + hover_label + "</extra>",
                 ))
+            del unit  # silence unused-var; format string covers display
         if not fig_tl.data:
             st.info("No trajectory.json found for the picked trials.")
         else:
             fig_tl.update_xaxes(title=x_axis)
-            fig_tl.update_yaxes(title="cumulative tokens")
+            fig_tl.update_yaxes(title="cumulative cost (USD)" if cost_mode else "cumulative tokens")
             st.plotly_chart(fig_tl, use_container_width=True)
+            if cost_mode:
+                # Surface raw pricing-table estimate and rescale factor per trial so
+                # mismatches with Harbor's authoritative cost_usd are visible. When
+                # cost_usd is missing (opencode), factor=1.0 and we show the raw.
+                audit_rows = [{
+                    "trial": t["trial"],
+                    "model": t.get("model") or "?",
+                    "cost_usd (Harbor)": round(t.get("cost_usd") or 0.0, 6),
+                    "est_cost_usd (raw)": round(est_cost_total.get(f"{t['job']}/{t['trial']}", 0.0), 6),
+                    "rescale_factor": round(cost_factor.get(f"{t['job']}/{t['trial']}", 1.0), 4),
+                } for t in picked_trials]
+                with st.expander("Cost estimate audit (raw vs Harbor)"):
+                    st.dataframe(audit_rows, hide_index=True, use_container_width=True)
         st.subheader("Trial details")
 
         def _stacked_bar(segments: list[dict], total_label: str) -> go.Figure:
@@ -1051,7 +1175,8 @@ with tab_trials:
             with tab_calls:
                 filtered = [
                     {"t_s": r["t_s"], "kind": r["kind"], "tool": r["tool"],
-                     "args": r["args"], "cum_tokens": r["cum_tokens"]}
+                     "args": r["args"], "cum_tokens": r["cum_tokens"],
+                     "cum_cost_usd": r["cum_cost_usd"]}
                     for r in tool_call_rows
                     if r["trial"] == t["trial"] and (not only_connector or r["kind"] == "connector")
                 ]
@@ -1062,11 +1187,14 @@ with tab_trials:
                     st.info("No tool calls recorded.")
 
             with tab_traj:
-                steps_data = load_trial_steps(t["job"], t["trial"], mtimes.get(t["job"], 0.0))
+                steps_data = load_trial_steps(
+                    t["job"], t["trial"], mtimes.get(t["job"], 0.0), t.get("model")
+                )
                 _render_trajectory_steps(
                     steps_data,
                     t["connectors_by_app"],
                     state_key=f"{t['job']}_{t['trial']}",
+                    trial_cost_usd=t.get("cost_usd"),
                 )
                 if steps_data:
                     n_calls = sum(len(s["tool_calls"]) for s in steps_data)

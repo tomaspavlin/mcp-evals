@@ -44,6 +44,26 @@ Harbor's `E2BEnvironment._create_sandbox` (`harbor/environments/e2b.py:198`) cal
 
 Workaround: `src/mcp_evals/_patches/e2b_timeout.py` monkey-patches `AsyncSandbox.create` to clamp `timeout` to 3600 s. Remove the patch (and its import in `src/mcp_evals/__init__.py`) when harbor exposes a `sandbox_timeout_secs` arg like `modal.py:883` does, or when we move to E2B paid.
 
+## Claude trajectory per-step metrics undercount billed tokens (Harbor gap)
+
+Harbor's claude-code ATIF trajectory writes one `metrics` block per "step" (one entry per agent turn), summing usage from a single API response per turn. Claude often makes **multiple API calls per turn** (interleaved thinking, tool-call cycles), each with its own `usage` block in the raw session JSONL. Harbor doesn't fold the intermediate calls into the step's metrics, so `prompt_tokens` / `cached_tokens` / `cache_creation_input_tokens` / `completion_tokens` per step are systematically low on turns with internal loops. The `final_metrics.total_cost_usd` is correct (computed elsewhere), so trial totals look right - it's only per-step that's off.
+
+Observed: 96% of claude-code trials match the pricing-table estimate within 5%, but 5 outliers show ratios 1.5x-17x (`apify-6tasks-cc-mcp-eval/apify-lead-gen-coffee__i4wud2B` is the worst). Cross-checking against the raw session JSONL (`agent/sessions/projects/*/*.jsonl`) recovers the missing tokens: e.g. one trial's trajectory records 14k cache_creation when the session has 27k. Session-based pricing lands within 6% of Harbor's authoritative cost when there are no subagents.
+
+Consequence: the dashboard's cumulative-cost timeline rescale factor is ~1.0 for normal trials but >1.3 for any trial that did multi-call turns; the line endpoint matches Harbor's true total (we rescale) but the curve shape understates intra-turn spikes.
+
+Fix direction: in Harbor's claude-code ATIF builder, walk every `usage` block in the session JSONL for the time window of the step and sum into the step's metrics (today it picks a single one). Subagent sessions are a separate concern - see "Subagent trajectories invisible to viewer + verifier".
+
+## Model pricing key lookup (dashboard `_MODEL_PRICES`)
+
+Dashboard cost computation looks up per-token rates by the trial's config model name (`tr.config.agent.model_name`). That slug differs from the model name the trajectory records: Anthropic reverses the order (`anthropic/claude-sonnet-4.6` config vs `anthropic/claude-4.6-sonnet-20260217` trajectory), OpenAI strips the namespace (`openai/gpt-5.4` config vs bare `gpt-5.4` trajectory). Current workaround in `dashboard/app.py` is to register every observed variant as a key pointing at the same rates dict — works for the 3 models we run, but every new model means hunting down both forms.
+
+Better fixes (pick one):
+1. Always look pricing up via the trajectory's `agent.model_name` (provider-canonical, plus the snapshot-date suffix is useful elsewhere). Requires reading the trajectory inside `load_trial_rows` and attaching `model_name_resolved` to each trial dict.
+2. Or, normalize in `_pricing_for` — strip provider prefix, strip date, sort the version/family tokens — then key the table by the normalized form. Avoids per-variant duplication.
+
+Pick (1) — the trajectory name is the source of truth for what served the request.
+
 ## Codex via OpenRouter: Responses API wss 404 noise
 
 Codex CLI tries `wss://openrouter.ai/api/v1/responses` first; OpenRouter doesn't expose that WebSocket endpoint, so codex logs 5x `404 Not Found` before falling back to HTTP Responses, which succeeds. Cosmetic but spams trial logs.
