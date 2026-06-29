@@ -93,6 +93,116 @@ _ERROR_HEAD_PREFIXES = ("error", "traceback (most recent call last)")
 _ERROR_SUBSTRINGS = ("command not found", "permission denied")
 
 
+# Per-token list prices in USD. `cache_write_5m` only set where the harness
+# reports cache_creation_input_tokens (claude trajectories' metrics.extra); others
+# fall back to input rate. Same rates registered under every slug variant we see
+# (trial config vs trajectory.json sometimes order version/family differently).
+_CLAUDE_SONNET_46 = {
+    # https://platform.claude.com/docs/en/about-claude/pricing (Claude Sonnet 4.6 row).
+    "input": 3.0e-6, "cache_read": 0.30e-6, "cache_write_5m": 3.75e-6, "output": 15.0e-6,
+}
+MODEL_PRICING_USD_PER_TOK: dict[str, dict] = {
+    "anthropic/claude-4.6-sonnet": _CLAUDE_SONNET_46,
+    "anthropic/claude-sonnet-4.6": _CLAUDE_SONNET_46,
+    # https://api-docs.deepseek.com/quick_start/pricing
+    "openrouter/deepseek/deepseek-v4-pro": {
+        "input": 0.435e-6, "cache_read": 0.003625e-6, "output": 0.87e-6,
+    },
+    "openrouter/deepseek/deepseek-v4-flash": {
+        "input": 0.09e-6, "cache_read": 0.00075e-6, "output": 0.18e-6,
+    },
+    # https://developers.openai.com/api/docs/pricing (gpt-5.4 row).
+    # Codex config uses `openai/gpt-5.4`; trajectory writes bare `gpt-5.4`.
+    "gpt-5.4": {
+        "input": 2.50e-6, "cache_read": 0.25e-6, "output": 15.0e-6,
+    },
+    "openai/gpt-5.4": {
+        "input": 2.50e-6, "cache_read": 0.25e-6, "output": 15.0e-6,
+    },
+}
+
+
+def pricing_for(model_name: str | None) -> dict | None:
+    """Per-token USD pricing for a model slug, or None if not in the table.
+
+    Strips OpenRouter `@preset/...` routing suffix and trailing `-YYYYMMDD`
+    release-date stamp before lookup, then falls back to the unstripped name.
+    """
+    if not model_name:
+        return None
+    base = model_name.split("@", 1)[0]
+    base = re.sub(r"-\d{8}$", "", base)
+    return MODEL_PRICING_USD_PER_TOK.get(base) or MODEL_PRICING_USD_PER_TOK.get(model_name)
+
+
+def apply_pricing(
+    pricing: dict,
+    prompt_tokens: int | None,
+    completion_tokens: int | None,
+    cached_tokens: int | None,
+    cache_write_tokens: int | None = None,
+) -> float:
+    """Cost in USD from token counts and an already-resolved pricing dict.
+
+    `prompt_tokens` is the total prompt (uncached + cached + cache-write),
+    matching `AgentContext.n_input_tokens`. Mirrors harbor codex.py formula.
+    """
+    prompt = prompt_tokens or 0
+    cached = cached_tokens or 0
+    cache_write = cache_write_tokens or 0
+    output = completion_tokens or 0
+    uncached = max(0, prompt - cached - cache_write)
+    write_rate = pricing.get("cache_write_5m") or pricing["input"]
+    return (
+        uncached * pricing["input"]
+        + cached * pricing["cache_read"]
+        + cache_write * write_rate
+        + output * pricing["output"]
+    )
+
+
+def compute_cost_usd(
+    model_name: str | None,
+    prompt_tokens: int | None,
+    completion_tokens: int | None,
+    cached_tokens: int | None,
+    cache_write_tokens: int | None = None,
+) -> float | None:
+    """USD cost from token counts via the local pricing table.
+
+    Returns None when the model isn't priced - caller should treat as missing,
+    not $0 (same policy as harbor's codex LiteLLM fallback).
+    """
+    pricing = pricing_for(model_name)
+    if pricing is None:
+        return None
+    return apply_pricing(
+        pricing, prompt_tokens, completion_tokens, cached_tokens, cache_write_tokens
+    )
+
+
+def trial_cost_usd(
+    *,
+    harbor_cost: float | None,
+    model_name: str | None,
+    prompt_tokens: int | None,
+    completion_tokens: int | None,
+    cached_tokens: int | None,
+) -> float | None:
+    """Trial total cost. Prefers the harness-reported value, backfills from tokens.
+
+    claude-code emits authoritative `total_cost_usd`; harbor's codex adapter
+    backfills via LiteLLM. opencode reports 0 when its models.dev lookup misses
+    on `@preset/...` slugs and harbor stores that as None - this is when the
+    local-table compute kicks in.
+    """
+    if harbor_cost is not None:
+        return harbor_cost
+    return compute_cost_usd(
+        model_name, prompt_tokens, completion_tokens, cached_tokens
+    )
+
+
 def parse_run_axes(verifier_env: dict[str, str] | None) -> dict[str, str]:
     """Read the per-app connector map a job wrote to verifier env.
 

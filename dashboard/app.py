@@ -84,46 +84,9 @@ def _fallback_connector(job_name: str) -> str:
     return "?"
 
 
-# Per-token list prices in USD. cache_write_5m only set where the harness
-# reports cache_creation_input_tokens (claude trajectories' metrics.extra);
-# others fall back to input rate. We register the same rates under every slug
-# variant we see in the wild (trial config vs trajectory.json sometimes order
-# version/family differently, e.g. `claude-sonnet-4.6` vs `claude-4.6-sonnet`).
-# TODO: replace the alias soup with a single canonical key per model and a
-# normalize step in _pricing_for, or always look up using the trajectory's
-# `agent.model_name` (provider-canonical, includes snapshot date) instead of
-# the config slug. See docs/todo.md "Model pricing key lookup".
-_CLAUDE_SONNET_46 = {
-    # https://platform.claude.com/docs/en/about-claude/pricing (Claude Sonnet 4.6 row).
-    "input": 3.0e-6, "cache_read": 0.30e-6, "cache_write_5m": 3.75e-6, "output": 15.0e-6,
-}
-_MODEL_PRICES: dict[str, dict] = {
-    "anthropic/claude-4.6-sonnet": _CLAUDE_SONNET_46,
-    "anthropic/claude-sonnet-4.6": _CLAUDE_SONNET_46,
-    # https://api-docs.deepseek.com/quick_start/pricing
-    "openrouter/deepseek/deepseek-v4-pro": {
-        "input": 0.435e-6, "cache_read": 0.003625e-6, "output": 0.87e-6,
-    },
-    # https://developers.openai.com/api/docs/pricing (gpt-5.4 row).
-    # Codex config uses `openai/gpt-5.4`; trajectory writes bare `gpt-5.4`.
-    "gpt-5.4": {
-        "input": 2.50e-6, "cache_read": 0.25e-6, "output": 15.0e-6,
-    },
-    "openai/gpt-5.4": {
-        "input": 2.50e-6, "cache_read": 0.25e-6, "output": 15.0e-6,
-    },
-}
-
-
-def _pricing_for(model_name: str | None) -> dict | None:
-    if not model_name:
-        return None
-    # Strip OpenRouter @preset/... routing suffix and any trailing -YYYYMMDD
-    # release-date stamp (e.g. anthropic/claude-4.6-sonnet-20260217).
-    base = model_name.split("@", 1)[0]
-    import re
-    base = re.sub(r"-\d{8}$", "", base)
-    return _MODEL_PRICES.get(base) or _MODEL_PRICES.get(model_name)
+# Pricing table and lookup live in connector_evals.metrics so the per-trial
+# cost backfill and the dashboard's per-step charts agree on numbers.
+_pricing_for = metrics_mod.pricing_for
 
 
 def _step_cost(metrics: dict, pricing: dict) -> float:
@@ -131,16 +94,9 @@ def _step_cost(metrics: dict, pricing: dict) -> float:
     cached = metrics.get("cached_tokens") or 0
     completion = metrics.get("completion_tokens") or 0
     # Claude trajectories expose cache_creation_input_tokens via metrics.extra;
-    # priced at the 1.25x write rate when known, else folded into uncached input.
+    # priced at the cache-write rate when known, else folded into uncached input.
     cache_write = ((metrics.get("extra") or {}).get("cache_creation_input_tokens")) or 0
-    uncached = max(0, prompt - cached - cache_write)
-    write_rate = pricing.get("cache_write_5m") or pricing["input"]
-    return (
-        uncached * pricing["input"]
-        + cached * pricing["cache_read"]
-        + cache_write * write_rate
-        + completion * pricing["output"]
-    )
+    return metrics_mod.apply_pricing(pricing, prompt, completion, cached, cache_write)
 
 
 @st.cache_data(show_spinner=False)
@@ -498,6 +454,16 @@ def load_trial_rows(job_name: str, mtime: float) -> list[dict]:
         if tr.verifier_result and tr.verifier_result.rewards:
             reward = tr.verifier_result.rewards.get("reward")
         model_info = tr.agent_info.model_info if tr.agent_info else None
+        # opencode reports cost=0 for OpenRouter `@preset/...` slugs (its models.dev
+        # lookup misses the suffix), and harbor turns that into None. Backfill from
+        # token counts so opencode totals line up with claude-code / codex.
+        cost = metrics_mod.trial_cost_usd(
+            harbor_cost=cost,
+            model_name=model_name,
+            prompt_tokens=n_in,
+            completion_tokens=n_out,
+            cached_tokens=n_cache,
+        )
         out.append({
             "job": job_name,
             "trial": trial_name,
