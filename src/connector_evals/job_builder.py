@@ -15,6 +15,7 @@ from connector_evals.config import RunConfig
 from connector_evals.apps.model import AppCell
 from connector_evals.defaults import (
     DEFAULT_AGENT_KWARGS,
+    DEFAULT_AGENT_KWARGS_BY_NAME,
     DEFAULT_ENVIRONMENT,
     DEFAULT_N_CONCURRENT_TRIALS,
 )
@@ -74,7 +75,11 @@ def build_job_config(run: RunConfig, cells: list[AppCell]) -> JobConfig:
         AgentConfig(
             name=a.name,
             model_name=a.model_name,
-            kwargs={**DEFAULT_AGENT_KWARGS, **(a.kwargs or {})},
+            kwargs={
+                **DEFAULT_AGENT_KWARGS,
+                **DEFAULT_AGENT_KWARGS_BY_NAME.get(a.name, {}),
+                **(a.kwargs or {}),
+            },
             mcp_servers=mcp_servers,
             skills=skills,
         )

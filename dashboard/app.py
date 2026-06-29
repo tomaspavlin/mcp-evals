@@ -881,10 +881,15 @@ with tab_grouped:
 
         st.subheader("Cost vs duration (per group)")
         st.caption("Ellipse half-axes are ±1σ, axis-aligned (no cross-axis covariance).")
+        # Reward is in the legend trace name so labels never overlap when dots
+        # cluster. Toggle below to additionally annotate each dot in-plot
+        # (handy with few groups, noisy with many).
+        show_scatter_labels = st.checkbox(
+            "Annotate dots with reward", value=False,
+        )
         # One dot per group at (avg agent exec s, avg cost USD). Surrounding
         # ellipse spans ±1σ on each axis (axis-aligned; not a covariance
-        # ellipse — we don't track cross-axis correlation). Avg reward is
-        # annotated near each dot.
+        # ellipse — we don't track cross-axis correlation).
         palette = px.colors.qualitative.Plotly
         fig_scatter = go.Figure()
         max_x = 0.0
@@ -899,6 +904,7 @@ with tab_grouped:
             max_y = max(max_y, cy + sy)
             reward_str = "-" if r["avg_reward"] is None else f"{r['avg_reward']:.2f}"
             label = f"reward {reward_str} (n={r['total']})"
+            legend_name = f"{r['group']} · reward {reward_str} (n={r['total']})"
             hover = (
                 f"<b>{r['group']}</b><br>"
                 f"avg cost: ${cy:.4f} (σ ${sy:.4f})<br>"
@@ -917,10 +923,10 @@ with tab_grouped:
                 )
             fig_scatter.add_trace(go.Scatter(
                 x=[cx], y=[cy],
-                mode="markers+text",
-                name=r["group"],
+                mode="markers+text" if show_scatter_labels else "markers",
+                name=legend_name,
                 marker=dict(size=12, color=color, line=dict(color="white", width=1)),
-                text=[label],
+                text=[label] if show_scatter_labels else None,
                 textposition="top center",
                 textfont=dict(size=11),
                 hovertemplate=hover + "<extra></extra>",
