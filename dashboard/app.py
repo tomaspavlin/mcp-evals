@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import statistics
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -543,6 +544,9 @@ def aggregate(trials: list[dict], by: list[str]) -> list[dict]:
         "subagent_tokens": 0,
         "baseline_sum": 0, "baseline_n": 0,
         "reward_sum": 0.0, "reward_n": 0,
+        # Per-trial samples kept for std-dev (sample std). Population-trivial
+        # groups (n<2) get std=0.
+        "cost_samples": [], "agent_exec_samples": [],
     })
     for t in trials:
         key = " | ".join(str(t.get(b) or "?") for b in by)
@@ -553,6 +557,8 @@ def aggregate(trials: list[dict], by: list[str]) -> list[dict]:
         if t["tests_passed"]:
             g["passed"] += 1
         g["cost_usd"] += t["cost_usd"]
+        g["cost_samples"].append(t["cost_usd"])
+        g["agent_exec_samples"].append(t["t_agent_exec"])
         g["n_input"] += t["n_input"]
         g["n_cache"] += t["n_cache"]
         g["n_output"] += t["n_output"]
@@ -595,6 +601,9 @@ def aggregate(trials: list[dict], by: list[str]) -> list[dict]:
             ),
             "cost_usd": g["cost_usd"],
             "avg_cost_usd": g["cost_usd"] / total,
+            # Sample std-dev across the group's trials; 0 when n<2.
+            "std_cost_usd": statistics.stdev(g["cost_samples"]) if len(g["cost_samples"]) > 1 else 0.0,
+            "std_agent_exec_s": statistics.stdev(g["agent_exec_samples"]) if len(g["agent_exec_samples"]) > 1 else 0.0,
             "input_tokens": g["n_input"],
             "cache_tokens": g["n_cache"],
             "uncached_input_tokens": max(0, g["n_input"] - g["n_cache"]),
@@ -764,8 +773,8 @@ with tab_grouped:
             "group", "total", "passed", "errored", "pass_rate", "avg_reward",
             "avg_agent_turns", "avg_connector_calls", "avg_off_connector_calls",
             "avg_errored_calls", "avg_connector_output_chars", "avg_prompt_baseline_tokens",
-            "avg_cost_usd", "avg_total_tokens", "avg_total_tokens_inc_subagents", "avg_subagent_tokens", "avg_uncached_input_tokens", "avg_cache_tokens", "cache_hit_rate", "avg_output_tokens",
-            "avg_env_setup_s", "avg_agent_setup_s", "avg_agent_exec_s", "avg_verifier_s",
+            "avg_cost_usd", "std_cost_usd", "avg_total_tokens", "avg_total_tokens_inc_subagents", "avg_subagent_tokens", "avg_uncached_input_tokens", "avg_cache_tokens", "cache_hit_rate", "avg_output_tokens",
+            "avg_env_setup_s", "avg_agent_setup_s", "avg_agent_exec_s", "std_agent_exec_s", "avg_verifier_s",
             "cost_usd",
         ]
         st.dataframe(
@@ -903,6 +912,64 @@ with tab_grouped:
         )
         fig_tokens.update_xaxes(title=" | ".join(group_by))
         st.plotly_chart(fig_tokens, use_container_width=True)
+
+        st.subheader("Cost vs duration (per group)")
+        st.caption("Ellipse half-axes are ±1σ, axis-aligned (no cross-axis covariance).")
+        # One dot per group at (avg agent exec s, avg cost USD). Surrounding
+        # ellipse spans ±1σ on each axis (axis-aligned; not a covariance
+        # ellipse — we don't track cross-axis correlation). Avg reward is
+        # annotated near each dot.
+        palette = px.colors.qualitative.Plotly
+        fig_scatter = go.Figure()
+        max_x = 0.0
+        max_y = 0.0
+        for i, r in enumerate(rows):
+            color = palette[i % len(palette)]
+            cx = r["avg_agent_exec_s"]
+            cy = r["avg_cost_usd"]
+            sx = r["std_agent_exec_s"]
+            sy = r["std_cost_usd"]
+            max_x = max(max_x, cx + sx)
+            max_y = max(max_y, cy + sy)
+            reward_str = "-" if r["avg_reward"] is None else f"{r['avg_reward']:.2f}"
+            label = f"reward {reward_str} (n={r['total']})"
+            hover = (
+                f"<b>{r['group']}</b><br>"
+                f"avg cost: ${cy:.4f} (σ ${sy:.4f})<br>"
+                f"avg agent exec: {cx:.1f}s (σ {sx:.1f}s)<br>"
+                f"avg reward: {reward_str}<br>"
+                f"pass rate: {r['pass_rate']:.1%}<br>"
+                f"trials: {r['total']}"
+            )
+            if sx > 0 or sy > 0:
+                # type=circle with non-equal half-widths draws an axis-aligned ellipse.
+                fig_scatter.add_shape(
+                    type="circle", xref="x", yref="y",
+                    x0=cx - sx, y0=cy - sy, x1=cx + sx, y1=cy + sy,
+                    line=dict(color=color, width=1),
+                    fillcolor=color, opacity=0.15, layer="below",
+                )
+            fig_scatter.add_trace(go.Scatter(
+                x=[cx], y=[cy],
+                mode="markers+text",
+                name=r["group"],
+                marker=dict(size=12, color=color, line=dict(color="white", width=1)),
+                text=[label],
+                textposition="top center",
+                textfont=dict(size=11),
+                hovertemplate=hover + "<extra></extra>",
+            ))
+        # Pad the axes a touch so ellipses + annotation text don't clip.
+        fig_scatter.update_xaxes(
+            title="avg agent exec (s)",
+            range=[0, max_x * 1.15 if max_x > 0 else 1],
+        )
+        fig_scatter.update_yaxes(
+            title="avg cost (USD)",
+            range=[0, max_y * 1.20 if max_y > 0 else 1],
+        )
+        fig_scatter.update_layout(showlegend=True, height=520)
+        st.plotly_chart(fig_scatter, use_container_width=True)
 
 def _trial_row(t: dict) -> dict:
     row = {
