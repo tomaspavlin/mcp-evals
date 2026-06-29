@@ -98,10 +98,11 @@ def parse_run_axes(verifier_env: dict[str, str] | None) -> dict[str, str]:
 
     Prefers CONNECTOR_EVALS_CONNECTORS_JSON (multi-app); falls back to
     CONNECTOR_EVALS_CONNECTOR + CONNECTOR_EVALS_APPS when present. Returns {} when
-    neither is set (e.g. old jobs predating these fields).
+    neither is set (e.g. old jobs predating these fields). MCP_EVALS_* keys are
+    read as legacy aliases for jobs written before the project rename.
     """
     env = verifier_env or {}
-    raw = env.get("CONNECTOR_EVALS_CONNECTORS_JSON")
+    raw = env.get("CONNECTOR_EVALS_CONNECTORS_JSON") or env.get("MCP_EVALS_CONNECTORS_JSON")
     if raw:
         try:
             data = json.loads(raw)
@@ -109,8 +110,8 @@ def parse_run_axes(verifier_env: dict[str, str] | None) -> dict[str, str]:
                 return {str(k): str(v) for k, v in data.items()}
         except json.JSONDecodeError:
             pass
-    connector = env.get("CONNECTOR_EVALS_CONNECTOR")
-    apps = (env.get("CONNECTOR_EVALS_APPS") or "").split(",")
+    connector = env.get("CONNECTOR_EVALS_CONNECTOR") or env.get("MCP_EVALS_CONNECTOR")
+    apps = (env.get("CONNECTOR_EVALS_APPS") or env.get("MCP_EVALS_APPS") or "").split(",")
     apps = [c.strip() for c in apps if c.strip()]
     if connector and apps:
         return {c: connector for c in apps}
