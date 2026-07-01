@@ -1,5 +1,7 @@
 # connector-evals
 
+![connector-evals: MCP vs CLI](docs/images/logo.png)
+
 Evaluate the tools you give to AI agents: MCP servers, skills, CLI tools. Real
 agents (claude-code, codex, opencode) run verifiable tasks against your
 tooling, so you can compare tool-access strategies (MCP vs CLI vs skill) across
