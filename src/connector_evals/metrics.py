@@ -101,9 +101,15 @@ _CLAUDE_SONNET_46 = {
     # https://platform.claude.com/docs/en/about-claude/pricing (Claude Sonnet 4.6 row).
     "input": 3.0e-6, "cache_read": 0.30e-6, "cache_write_5m": 3.75e-6, "output": 15.0e-6,
 }
+# Sonnet 5 introductory pricing through 2026-08-31; reverts to Sonnet 4.6 rates on 2026-09-01.
+_CLAUDE_SONNET_5 = {
+    "input": 2.0e-6, "cache_read": 0.20e-6, "cache_write_5m": 2.50e-6, "output": 10.0e-6,
+}
 MODEL_PRICING_USD_PER_TOK: dict[str, dict] = {
     "anthropic/claude-4.6-sonnet": _CLAUDE_SONNET_46,
     "anthropic/claude-sonnet-4.6": _CLAUDE_SONNET_46,
+    "anthropic/claude-sonnet-5": _CLAUDE_SONNET_5,
+    "anthropic/claude-5-sonnet": _CLAUDE_SONNET_5,
     # https://api-docs.deepseek.com/quick_start/pricing
     "openrouter/deepseek/deepseek-v4-pro": {
         "input": 0.435e-6, "cache_read": 0.003625e-6, "output": 0.87e-6,
