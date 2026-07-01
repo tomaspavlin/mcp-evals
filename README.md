@@ -1,38 +1,57 @@
 # connector-evals
 
-Develop, test, and evaluate the tools you give to AI agents: MCP servers,
-skills, CLI tools. Real agents (claude-code, codex, opencode) run verifiable
-tasks against your tooling, so you can compare tool-access strategies (MCP vs
-CLI vs skill) across harnesses and models and measure success rate, token/cost
-efficiency, and tool-call behavior. Built on
-[Harbor](https://www.harborframework.com/docs).
+Evaluate the tools you give to AI agents: MCP servers, skills, CLI tools. Real
+agents (claude-code, codex, opencode) run verifiable tasks against your
+tooling, so you can compare tool-access strategies (MCP vs CLI vs skill) across
+harnesses and models and measure success rate, token/cost efficiency, and
+tool-call behavior. Built on [Harbor](https://www.harborframework.com/docs).
 
-How it works:
+Also usable as a dev loop when building new MCP servers or skills: every trial
+stores the full execution trace, so you can diagnose failures and iterate on
+your tooling directly (point a coding agent at the traces under `jobs/`).
 
-1. Define an **app** (a third-party service: apify, github, ...) under
-   `apps/<name>/<connector>/` for each access **connector** you want to
-   compare: `mcp`, `cli`, `mcpc`, `cli+skill`. Each cell holds the MCP server
-   config, the CLI setup, or the skill the agent gets.
-2. Define tasks in `tasks/`: an instruction the agent should accomplish, plus
-   a verifier. Each task declares which apps it needs via
-   `[connector_evals].apps = [...]` in its `task.toml` - one task can use
-   several apps (e.g. apify + github together).
-3. `connector-evals run` launches the agents in sandboxes on every task with the
-   chosen connector(s) wired up, and runs the verifiers.
-4. Results, including full execution traces, are stored structured under
-   `jobs/`. Inspect them in the results browser or dashboard, or point a coding
-   agent (e.g. Claude Code) at them to diagnose failures and iterate on your
-   skills and apps.
+**Features:**
+
+- 📊 Side-by-side comparison of tool access: **MCP / CLI / skill / [mcpc](https://github.com/apify/mcpc)**
+- 🤖 Multi-harness: **claude-code, codex, opencode**
+- 🧠 Multi-model via OpenRouter or direct-to-provider
+- 🔗 Cross-app tasks: one instruction can touch multiple apps at once (apify + github + ...)
+- 📜 Full trajectory traces, verifier scores, and per-trial token/cost breakdowns
+- 📈 Project dashboard with connector-comparison plots
+- ☁️ Cloud sandboxes (E2B, Daytona, ...) or local Docker
+- 🧩 Extensible: add apps or tasks by dropping a directory, no code changes
+- 🐚 Built on [Harbor](https://www.harborframework.com/docs)
 
 ## Concepts
 
-Harbor primitives (Task, Trial, Job, Agent, Environment, Dataset) are documented
-at https://www.harborframework.com/docs/core-concepts. `connector-evals` adds two
-project-specific axes on top:
+Harbor primitives (full reference:
+https://www.harborframework.com/docs/core-concepts):
+
+- **task** - one test case: an instruction plus a verifier that scores the result.
+- **dataset** - a collection of tasks.
+- **agent** - the CLI harness that completes the task (claude-code, codex, opencode, ...).
+- **environment** - the container the agent runs in (docker, e2b, daytona, ...).
+- **trial** - one (task, agent, model) execution; produces a reward.
+- **job** - a collection of trials, run in parallel.
+
+`connector-evals` adds three project-specific pieces on top:
 
 - **app** - third-party service the agent talks to (`apify`, `github`, `linear`, `notion`, ...).
 - **connector** - how the agent reaches it: `mcp`, `cli`, `mcpc`, or `cli+skill`. One connector per run by default; `app_connectors:` for hybrid.
 - **cell** - one (app, connector) pair on disk: `apps/<app>/<connector>/{cell.yaml, instruction.md, [setup.sh], [teardown.sh], [skills/]}`.
+
+Workflow:
+
+1. Create a **cell** for each `(app, connector)` pair you want to compare under
+   `apps/<app>/<connector>/`.
+2. Define tasks in `tasks/`: an instruction the agent should accomplish plus a
+   verifier. Each task declares which apps it needs via
+   `[connector_evals].apps = [...]` in its `task.toml`; one task can use
+   several apps at once (e.g. apify + github).
+3. `connector-evals run` launches the agents in sandboxes on every task with
+   the chosen connector(s) wired up, and runs the verifiers.
+4. Results and full execution traces land under `jobs/`. Inspect with the
+   results browser, the dashboard, or by pointing a coding agent at them.
 
 Deep reference (cell file layout, `cell.yaml` fields, MCP-proxy wrapper template,
 verifier env contract, step-by-step for wiring a new app):
@@ -41,7 +60,7 @@ verifier env contract, step-by-step for wiring a new app):
 ## Installation
 
 ```bash
-uv tool install git+https://github.com/tomaspavlin/connector-evals
+uv tool install git+https://github.com/apify-projects/connector-evals
 ```
 
 From a local fork/checkout instead (changes in the checkout apply immediately,
@@ -52,17 +71,17 @@ uv tool install --editable /path/to/connector-evals
 ```
 
 To use it as a library (`from connector_evals import ...`) add it as a project
-dependency instead: `uv add git+https://github.com/tomaspavlin/connector-evals`, then
+dependency instead: `uv add git+https://github.com/apify-projects/connector-evals`, then
 invoke the CLI via `uv run connector-evals`.
 
 ## Prerequisites
 
-- **OpenRouter account** — single key for all LLM providers. https://openrouter.ai/keys
-- **E2B account** (default sandbox) — https://e2b.dev
-- **Daytona account** (alternative cloud sandbox, `--env daytona`) — https://app.daytona.io
-- **Docker** (alternative local sandbox, `--env docker`) — OrbStack works.
+- **OpenRouter account** - single key for all LLM providers. https://openrouter.ai/keys
+- **E2B account** (default sandbox) - https://e2b.dev
+- **Daytona account** (alternative cloud sandbox, `--env daytona`) - https://app.daytona.io
+- **Docker** (alternative local sandbox, `--env docker`) - OrbStack works.
 
-Put keys in a `.env` in the directory you run from — `connector-evals run` auto-loads
+Put keys in a `.env` in the directory you run from; `connector-evals run` auto-loads
 it (`--env-file` overrides). At minimum `OPENROUTER_API_KEY` plus the sandbox
 key (`E2B_API_KEY` by default).
 
@@ -137,27 +156,29 @@ connector-evals run --apps-dir evals/apps -t evals/tasks/my-task \
   match must be a directory with a `SKILL.md`; a pattern matching nothing is
   an error. The sibling `skills/` subdir is still auto-discovered and
   de-duplicated against explicit entries.
-- Every task's `environment/` is materialized by copying `images/base/` into
-  it (replacing whatever is there). Harbor requires `environment/` inside the
-  task dir, so this cannot be redirected; gitignore `tasks/*/environment/`,
-  as this repo does.
+- Every task's `environment/` is materialized at run time by copying
+  `images/base/` into it (replacing whatever is there). Harbor requires
+  `environment/` inside the task dir, so this cannot be redirected; gitignore
+  `tasks/*/environment/`, as this repo does.
 
 ## Viewing results
+
+Project dashboard (MCP vs CLI vs skill comparisons and other project-specific
+plots):
+
+```bash
+connector-evals dashboard [JOBS_DIR]     # defaults to ./jobs
+```
+
+`connector-evals dashboard --help` for flags. See `dashboard/README.md` for
+first-time setup (dedicated streamlit venv).
+
+Harbor's generic browsers are also available for per-trial inspection:
 
 ```bash
 harbor view jobs    # trial browser
 harbor view tasks   # task browser
 ```
-
-Project-specific plots (MCP vs CLI vs skill comparisons, etc.) live in a custom app:
-
-```bash
-connector-evals dashboard                # ./jobs
-connector-evals dashboard evals/jobs     # any other jobs dir, e.g. from an app repo
-```
-
-Flags: `-p/--port` (default 8501), `--host`, `--no-browser`. See
-`dashboard/README.md` for first-time setup (dedicated streamlit venv).
 
 ## Known limitations
 
@@ -169,23 +190,27 @@ Flags: `-p/--port` (default 8501), `--host`, `--no-browser`. See
   "Full output saved to: ..." stub instead of the full content), so `connector_output_chars`
   undercounts for verbose calls; cli/mcpc variants benefit most from this. Token totals
   are unaffected (reported by the API, not derived from content). See `docs/todo.md`.
-- Connector sweeps over the same task now share one Dockerfile (`images/base/`), so the
-  old "don't run same-task configs in parallel" restriction is lifted. Two runs against
-  the same task with different connectors can run concurrently; the materialized
-  `environment/` is identical so the sandbox template cache is reused either way.
 - First-time e2b template builds for the same task can race and cross-cancel
-  (`BuildException` / `SandboxException 404`). Pre-warm with
-  `configs/all-opencode-deepseek-mcp-prewarm.yaml` before parallel sweeps.
-- E2B accepts heavy concurrency: a 17-trial sweep with `-n 17` ran with zero
-  sandbox / quota / 429 errors. Set `-n` to whatever your dataset size / API rate
-  limits allow; the sandbox layer is not the bottleneck.
+  (`BuildException` / `SandboxException 404`). Pre-warm with one of the
+  `configs/*-prewarm.yaml` configs before parallel sweeps. E2B itself accepts
+  heavy concurrency once templates are warm: a 17-trial sweep with `-n 17` ran
+  with zero sandbox / quota / 429 errors, so set `-n` to whatever your dataset
+  size and upstream API rate limits allow.
+- If a run aborts with `FileExistsError` on `jobs/<job-name>/`, the previous
+  run left the dir behind: `rm -rf jobs/<job-name>` and rerun.
+- Apify MCP sweeps need `-n ≤ 3`. Higher concurrency times out the stdio probe
+  during MCP server startup. Applies to `--connector mcp` runs touching the
+  `apify` app; other connectors and other apps are unaffected.
+- OpenRouter models (`-m openrouter/...`) must pin a provider preset or prompt
+  caching drops to ~0 across turns, since OpenRouter re-routes providers per
+  request. Use `@preset/<provider>-only`, e.g.
+  `openrouter/anthropic/claude-haiku-4.5@preset/anthropic-provider-only`. See
+  AGENTS.md § Models.
 
 ## Credits
 
-The GitHub task suite (`tasks/github-*`) is ported from the `bench-github`
-benchmark in [kunchenguid/axi](https://github.com/kunchenguid/axi) - task
-prompts and grading hints are reused, re-expressed as Harbor trajectory-judge
-tasks. Thanks to that project.
+GitHub tasks (`tasks/github-*`) are ported from `bench-github` in
+[kunchenguid/axi](https://github.com/kunchenguid/axi).
 
 ## Development
 
@@ -198,7 +223,7 @@ cp .env.example .env                     # then set OPENROUTER_API_KEY, E2B_API_
 uv run pytest                            # unit tests
 ```
 
-Smoke tests against the bundled evals — zero-cost (no LLM, just verifies the
+Smoke tests against the bundled evals, zero-cost (no LLM, just verifies the
 Harbor + sandbox loop):
 
 ```bash
