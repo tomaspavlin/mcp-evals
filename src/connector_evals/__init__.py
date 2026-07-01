@@ -1,4 +1,5 @@
 from connector_evals._patches import codex_mcp_env  # noqa: F401
+from connector_evals._patches import codex_step_metrics  # noqa: F401
 from connector_evals._patches import codex_wire_api  # noqa: F401
 from connector_evals._patches import e2b_timeout  # noqa: F401
 from connector_evals._patches import integration_setup_script  # noqa: F401
