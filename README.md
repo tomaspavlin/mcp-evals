@@ -1,16 +1,14 @@
-# connector-evals
+# connector evals
 
 ![connector-evals: MCP vs CLI](docs/images/logo.png)
 
-Evaluate the tools you give to AI agents: MCP servers, skills, CLI tools. Real
-agents (claude-code, codex, opencode) run verifiable tasks against your
-tooling, so you can compare tool-access strategies (MCP vs CLI vs skill) across
-harnesses and models and measure success rate, token/cost efficiency, and
-tool-call behavior. Built on [Harbor](https://www.harborframework.com/docs).
+Evaluate the tools you give to AI agents. Real agents (claude-code, codex,
+opencode) run verifiable tasks through your MCP server, CLI, or skill, and you
+get side-by-side numbers across harnesses and models: success rate, token
+cost, tool-call behavior.
 
-Also usable as a dev loop when building new MCP servers or skills: every trial
-stores the full execution trace, so you can diagnose failures and iterate on
-your tooling directly (point a coding agent at the traces under `jobs/`).
+Doubles as a dev loop when you're building the tools themselves: every trial
+saves the full trajectory, so you can diagnose failures and iterate.
 
 **Features:**
 
