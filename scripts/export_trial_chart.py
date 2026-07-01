@@ -142,17 +142,21 @@ def _norm(c: str) -> str:
     return "cli+skill" if c == "skill" else c
 
 
-def normalize_and_average(trials: list[dict], y_key: str, resample_n: int = 200) -> tuple[np.ndarray, np.ndarray, float, float]:
+def normalize_and_average(
+    trials: list[dict], y_key: str, resample_n: int = 200,
+) -> tuple[np.ndarray, np.ndarray, float, float, list[tuple[np.ndarray, np.ndarray]]]:
     """Time-normalize each trial to 0..1, average, rescale to (avg_t_end, avg_y_end).
 
-    Returns (x, y, avg_t_end, avg_y_end). x, y have length resample_n+1.
+    Returns (x, y, avg_t_end, avg_y_end, raw_trials).
+    raw_trials is a list of (t_arr, y_arr) per trial for optional overlay.
     """
     if not trials:
-        return np.array([]), np.array([]), 0.0, 0.0
+        return np.array([]), np.array([]), 0.0, 0.0, []
     frac_grid = np.linspace(0.0, 1.0, resample_n + 1)
     stacked = []
     end_ts = []
     end_ys = []
+    raw: list[tuple[np.ndarray, np.ndarray]] = []
     for tr in trials:
         ts, toks, costs = read_trajectory(tr["traj_path"], tr.get("model_name"))
         ys = toks if y_key == "tokens" else costs
@@ -163,6 +167,7 @@ def normalize_and_average(trials: list[dict], y_key: str, resample_n: int = 200)
         # Prepend origin so the curve starts at (0,0) — reflects "before first step".
         t_arr = np.insert(t_arr, 0, 0.0)
         y_arr = np.insert(y_arr, 0, 0.0)
+        raw.append((t_arr, y_arr))
         fracs = t_arr / t_arr[-1]
         # Normalize y to end at 1.0 for shape averaging; we rescale by avg endpoint later.
         y_norm = y_arr / y_arr[-1] if y_arr[-1] > 0 else y_arr
@@ -171,7 +176,7 @@ def normalize_and_average(trials: list[dict], y_key: str, resample_n: int = 200)
         end_ts.append(t_arr[-1])
         end_ys.append(y_arr[-1])
     if not stacked:
-        return np.array([]), np.array([]), 0.0, 0.0
+        return np.array([]), np.array([]), 0.0, 0.0, []
     mean_shape = np.mean(np.vstack(stacked), axis=0)
     if len(stacked) >= 2:
         # Edge-padded rolling mean so boundaries stay on the curve (a naive
@@ -185,7 +190,7 @@ def normalize_and_average(trials: list[dict], y_key: str, resample_n: int = 200)
     avg_y = float(np.mean(end_ys))
     x = frac_grid * avg_t
     y = smoothed * avg_y
-    return x, y, avg_t, avg_y
+    return x, y, avg_t, avg_y, raw
 
 
 def build_figure(
@@ -194,10 +199,29 @@ def build_figure(
     width: int,
     height: int,
     palette: list[str],
+    show_trials: bool = False,
 ) -> go.Figure:
     fig = go.Figure()
     max_x = 0.0
     max_y = 0.0
+    # First pass: dashed raw trials underneath. Extend axes to include any trial
+    # that ran longer / cost more than the group average.
+    if show_trials:
+        for i, g in enumerate(groups):
+            color = g.get("color") or palette[i % len(palette)]
+            for t_arr, y_arr in g.get("raw", []):
+                if t_arr.size == 0:
+                    continue
+                max_x = max(max_x, float(t_arr[-1]))
+                max_y = max(max_y, float(y_arr[-1]))
+                fig.add_trace(go.Scatter(
+                    x=t_arr, y=y_arr,
+                    mode="lines",
+                    line=dict(color=color, width=1.2, dash="dash"),
+                    opacity=0.45,
+                    hoverinfo="skip",
+                    showlegend=False,
+                ))
     for i, g in enumerate(groups):
         color = g.get("color") or palette[i % len(palette)]
         x, y = g["x"], g["y"]
@@ -297,6 +321,8 @@ def main() -> None:
     ap.add_argument("--width", type=int, default=1600)
     ap.add_argument("--height", type=int, default=900)
     ap.add_argument("--also-png", action="store_true", help="also write <out>.png next to the svg")
+    ap.add_argument("--show-trials", action="store_true",
+                    help="overlay each raw trial as a thin dashed line in its connector color")
     args = ap.parse_args()
 
     trials = scan_trials(args.jobs_dir, args.task, args.model)
@@ -322,7 +348,7 @@ def main() -> None:
     print(f"Found {len(trials)} trials across {len(by_conn)} connector(s):")
     for connector in sorted([c for c in wanted if c in by_conn], key=order_key):
         conn_trials = by_conn[connector]
-        x, y, avg_t, avg_y = normalize_and_average(conn_trials, args.y)
+        x, y, avg_t, avg_y, raw = normalize_and_average(conn_trials, args.y)
         if x.size == 0:
             print(f"  {connector}: {len(conn_trials)} trials but no usable trajectories, skipping")
             continue
@@ -331,7 +357,7 @@ def main() -> None:
         groups.append({
             "label": labels.get(connector, connector),
             "color": colors_override.get(connector),
-            "x": x, "y": y,
+            "x": x, "y": y, "raw": raw,
             "avg_t": avg_t, "avg_y": avg_y,
         })
 
@@ -339,7 +365,9 @@ def main() -> None:
         print("no groups to plot", file=sys.stderr)
         sys.exit(1)
 
-    fig = build_figure(groups, args.y, args.width, args.height, DEFAULT_PALETTE)
+    fig = build_figure(
+        groups, args.y, args.width, args.height, DEFAULT_PALETTE, show_trials=args.show_trials,
+    )
     fig.write_image(str(args.out), width=args.width, height=args.height, scale=2)
     print(f"wrote {args.out}")
     if args.also_png:
